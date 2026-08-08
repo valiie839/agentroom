@@ -63,26 +63,10 @@ export async function POST(request: Request) {
   const runIds: string[] = [];
 
   for (const agent of resolved) {
-    try {
-      const { runId, text } = await runAgent(roomId, agent, transcript);
-      runIds.push(runId);
-      if (text) {
-        transcript.push({ role: "assistant", content: `${agent.name}: ${text}` });
-      }
-    } catch (error) {
-      const detail = error instanceof Error ? error.message : String(error);
-      // El fallo se reporta dentro del room, no solo en los logs: si un
-      // agente se cae durante la demo, se ve por que.
-      await publishMessage({
-        channelId: roomId,
-        senderId: agent.senderId,
-        type: MSG.AGENT_MESSAGE,
-        content: {
-          runId: "error",
-          agentSlug: agent.slug,
-          text: `[no pude responder: ${detail.slice(0, 140)}]`,
-        },
-      }).catch(() => {});
+    const { runId, text } = await runAgent(roomId, agent, transcript);
+    runIds.push(runId);
+    if (text) {
+      transcript.push({ role: "assistant", content: `${agent.name}: ${text}` });
     }
   }
 
@@ -140,19 +124,25 @@ async function runAgent(
     );
   };
 
-  for await (const delta of streamChat(messages)) {
-    full += delta;
-    buffer += delta;
+  let failure: string | undefined;
 
-    // Un POST por token seria inviable (cientos de requests por respuesta).
-    // Agrupamos por tiempo o por volumen, lo que ocurra primero: sigue
-    // viendose como escritura fluida pero son ~8 publicaciones/segundo.
-    if (
-      buffer.length >= FLUSH_CHARS ||
-      Date.now() - lastFlush >= FLUSH_INTERVAL_MS
-    ) {
-      flush();
+  try {
+    for await (const delta of streamChat(messages)) {
+      full += delta;
+      buffer += delta;
+
+      // Un POST por token seria inviable (cientos de requests por respuesta).
+      // Agrupamos por tiempo o por volumen, lo que ocurra primero: sigue
+      // viendose como escritura fluida pero son ~8 publicaciones/segundo.
+      if (
+        buffer.length >= FLUSH_CHARS ||
+        Date.now() - lastFlush >= FLUSH_INTERVAL_MS
+      ) {
+        flush();
+      }
     }
+  } catch (error) {
+    failure = error instanceof Error ? error.message : String(error);
   }
 
   flush();
@@ -160,15 +150,23 @@ async function runAgent(
   // o el cliente borraria el borrador antes de terminar de pintarlo.
   await queue;
 
-  const text = full.trim();
-  if (text) {
-    await publishMessage({
-      channelId: roomId,
-      senderId: agent.senderId,
-      type: MSG.AGENT_MESSAGE,
-      content: { runId, agentSlug: agent.slug, text },
-    });
-  }
+  // Pase lo que pase se publica un mensaje final con ESTE runId. Es lo que
+  // retira el borrador en los clientes: sin el, un fallo del modelo deja al
+  // agente "escribiendo..." para siempre, que en vivo es peor que el error.
+  const text =
+    full.trim() ||
+    (failure
+      ? `[no pude responder: ${failure.slice(0, 140)}]`
+      : "[me quede sin nada que decir]");
 
-  return { runId, text };
+  await publishMessage({
+    channelId: roomId,
+    senderId: agent.senderId,
+    type: MSG.AGENT_MESSAGE,
+    content: { runId, agentSlug: agent.slug, text },
+  });
+
+  // El texto de fallo se muestra en la sala pero no entra al transcript:
+  // el siguiente agente no debe razonar sobre el error del anterior.
+  return { runId, text: failure ? "" : text };
 }

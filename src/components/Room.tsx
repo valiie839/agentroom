@@ -32,7 +32,17 @@ import {
 interface Draft {
   agentSlug: string;
   text: string;
+  /** Ultima señal recibida; se usa para descartar borradores huerfanos. */
+  updatedAt: number;
 }
+
+/**
+ * Si un borrador deja de recibir señales por mas de este tiempo, se
+ * descarta. Cubre el caso en que el mensaje final nunca llega (la funcion
+ * del servidor murio, se corto la red): sin esto el agente se queda
+ * "escribiendo..." indefinidamente, que en vivo es peor que un error.
+ */
+const DRAFT_TIMEOUT_MS = 25_000;
 
 export function Room({ roomId, me }: { roomId: string; me: PresenceMeta }) {
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
@@ -62,6 +72,7 @@ export function Room({ roomId, me }: { roomId: string; me: PresenceMeta }) {
           [c.runId]: {
             agentSlug: c.agentSlug,
             text: (prev[c.runId]?.text ?? "") + c.delta,
+            updatedAt: Date.now(),
           },
         }));
         return;
@@ -71,7 +82,11 @@ export function Room({ roomId, me }: { roomId: string; me: PresenceMeta }) {
         const c = msg.content as AgentThinkingContent;
         setDrafts((prev) => ({
           ...prev,
-          [c.runId]: { agentSlug: c.agentSlug, text: "" },
+          [c.runId]: {
+            agentSlug: c.agentSlug,
+            text: "",
+            updatedAt: Date.now(),
+          },
         }));
         return;
       }
@@ -113,6 +128,22 @@ export function Room({ roomId, me }: { roomId: string; me: PresenceMeta }) {
       behavior: "smooth",
     });
   }, [visible.length, drafts]);
+
+  // Barrido de borradores huerfanos (ver DRAFT_TIMEOUT_MS).
+  useEffect(() => {
+    const id = setInterval(() => {
+      const cutoff = Date.now() - DRAFT_TIMEOUT_MS;
+      setDrafts((prev) => {
+        const live = Object.entries(prev).filter(
+          ([, d]) => d.updatedAt >= cutoff,
+        );
+        return live.length === Object.keys(prev).length
+          ? prev
+          : Object.fromEntries(live);
+      });
+    }, 5_000);
+    return () => clearInterval(id);
+  }, []);
 
   const invoke = useCallback(
     async (text: string) => {
