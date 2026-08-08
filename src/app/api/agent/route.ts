@@ -116,18 +116,28 @@ async function runAgent(
   let buffer = "";
   let lastFlush = Date.now();
 
-  const flush = async () => {
+  // Cola encadenada: las publicaciones salen en orden, pero el bucle que
+  // lee del modelo no se bloquea esperando el round-trip de cada una.
+  // Awaitear cada flush aqui dentro sumaba varios segundos por respuesta.
+  let queue: Promise<unknown> = Promise.resolve();
+
+  const flush = () => {
     if (!buffer) return;
     const delta = buffer;
     buffer = "";
     lastFlush = Date.now();
-    await publishMessage({
-      channelId: roomId,
-      senderId: agent.senderId,
-      type: MSG.AGENT_TOKEN,
-      ephemeral: true,
-      content: { runId, agentSlug: agent.slug, delta },
-    });
+    queue = queue.then(() =>
+      publishMessage({
+        channelId: roomId,
+        senderId: agent.senderId,
+        type: MSG.AGENT_TOKEN,
+        ephemeral: true,
+        content: { runId, agentSlug: agent.slug, delta },
+      }).catch(() => {
+        // Un fragmento perdido no debe tumbar la respuesta completa:
+        // el mensaje final consolidado llega igual.
+      }),
+    );
   };
 
   for await (const delta of streamChat(messages)) {
@@ -141,11 +151,14 @@ async function runAgent(
       buffer.length >= FLUSH_CHARS ||
       Date.now() - lastFlush >= FLUSH_INTERVAL_MS
     ) {
-      await flush();
+      flush();
     }
   }
 
-  await flush();
+  flush();
+  // El definitivo solo puede publicarse cuando ya salieron los fragmentos,
+  // o el cliente borraria el borrador antes de terminar de pintarlo.
+  await queue;
 
   const text = full.trim();
   if (text) {
