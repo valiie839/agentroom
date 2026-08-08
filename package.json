@@ -9,6 +9,7 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@portalsdk/config": "^0.2.1",
     "@portalsdk/core": "^0.1.5",
     "@portalsdk/react": "^0.1.4",
     "next": "16.3.0",

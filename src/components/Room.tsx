@@ -51,6 +51,14 @@ export function Room({ roomId, me }: { roomId: string; me: PresenceMeta }) {
   /** Con la sala viva, los agentes deciden solos cuando intervenir. */
   const [liveRoom, setLiveRoom] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
+  /**
+   * Bolso completo de metadata de presencia. Portal reemplaza el bag entero
+   * en cada setMetadata, asi que hay que mandarlo siempre completo: enviar
+   * solo {cursor} borraria el nombre, y enviar solo {name} borraria el
+   * cursor -- que es justo lo que pasaba, dejando los punteros invisibles.
+   */
+  const metaRef = useRef<Record<string, unknown>>({ ...me });
+  const lastStatus = useRef<string>("");
 
   const {
     messages,
@@ -137,8 +145,13 @@ export function Room({ roomId, me }: { roomId: string; me: PresenceMeta }) {
   // exista socket; si esa primera propagacion se pierde, el resto de la
   // sala te ve como "conectando..." el resto de la sesion.
   useEffect(() => {
-    if (status === "ready") setMetadata(me as unknown as Record<string, unknown>);
-  }, [status, setMetadata, me]);
+    // Solo en la transicion real a "ready". Sin el guardia, el efecto se
+    // reejecuta en cada render y reescribe el bag, borrando el cursor.
+    if (status === "ready" && lastStatus.current !== "ready") {
+      setMetadata(metaRef.current);
+    }
+    lastStatus.current = status;
+  }, [status, setMetadata]);
 
   // Barrido de borradores huerfanos (ver DRAFT_TIMEOUT_MS).
   useEffect(() => {
@@ -330,10 +343,11 @@ export function Room({ roomId, me }: { roomId: string; me: PresenceMeta }) {
           </div>
         </header>
 
-        <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto p-4">
+        <div className="relative min-h-0 flex-1">
+          <div ref={scrollRef} className="h-full space-y-3 overflow-y-auto p-4">
           {visible.length === 0 && (
             <p className="mt-10 text-center text-sm text-neutral-600">
-              Sala vacía. Escribe algo mencionando a un agente.
+              Sala vacía. Escribe con normalidad: alguien responderá.
             </p>
           )}
 
@@ -381,6 +395,7 @@ export function Room({ roomId, me }: { roomId: string; me: PresenceMeta }) {
               está escribiendo…
             </p>
           )}
+          </div>
         </div>
 
         <div className="border-t border-white/10 p-3">
