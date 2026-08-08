@@ -66,7 +66,14 @@ export async function POST(request: Request) {
     const { runId, text } = await runAgent(roomId, agent, transcript);
     runIds.push(runId);
     if (text) {
-      transcript.push({ role: "assistant", content: `${agent.name}: ${text}` });
+      // Se anota como turno de USUARIO, no de assistant. Lo dijo otro
+      // agente, no este, y ademas deja el ultimo turno del lado del
+      // usuario: cerrar la conversacion con un mensaje de assistant hacia
+      // que el modelo devolviera vacio de forma intermitente.
+      transcript.push({
+        role: "user",
+        content: `${agent.name} (${agent.role}) respondio: ${text}`,
+      });
     }
   }
 

@@ -151,13 +151,16 @@ export function Room({ roomId, me }: { roomId: string; me: PresenceMeta }) {
       if (mentioned.length === 0) return;
 
       // Contexto reciente para que los agentes sepan de que se habla.
+      // Todo el historial va como turnos de usuario, incluidas las
+      // respuestas de otros agentes: para quien va a responder ahora son
+      // contexto ajeno, no cosas que dijo el mismo.
       const history = visible.slice(-12).map((m) => {
         if (m.type === MSG.AGENT_MESSAGE) {
           const c = m.content as AgentMessageContent;
           const agent = AGENT_BY_SLUG.get(c.agentSlug);
           return {
-            role: "assistant" as const,
-            content: `${agent?.name ?? c.agentSlug}: ${c.text}`,
+            role: "user" as const,
+            content: `${agent?.name ?? c.agentSlug} (${agent?.role ?? "agente"}) respondio: ${c.text}`,
           };
         }
         const c = m.content as HumanContent;
