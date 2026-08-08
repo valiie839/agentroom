@@ -14,6 +14,7 @@
 import { streamChat, type ChatMessage } from "@/lib/ai";
 import { publishMessage } from "@/lib/portal-server";
 import { AGENT_BY_SLUG, type AgentDef } from "@/lib/agents";
+import { pickInterjector, pickResponder } from "@/lib/router";
 import { MSG } from "@/lib/room-types";
 
 /** Vercel corta las funciones; el streaming necesita margen. */
@@ -26,10 +27,15 @@ const FLUSH_CHARS = 48;
 
 interface AgentRequest {
   roomId: string;
-  /** Slugs de los agentes a invocar, en orden. */
+  /** Slugs de los agentes a invocar, en orden. Vacio en modo automatico. */
   agents: string[];
   /** Historial reciente del room, ya aplanado a texto. */
   history: ChatMessage[];
+  /**
+   * Sala viva: nadie fue mencionado, asi que el servidor decide si algun
+   * agente deberia intervenir -- incluida la opcion de que ninguno lo haga.
+   */
+  auto?: boolean;
 }
 
 export async function POST(request: Request) {
@@ -40,29 +46,17 @@ export async function POST(request: Request) {
     return Response.json({ error: "JSON invalido" }, { status: 400 });
   }
 
-  const { roomId, agents, history } = body;
+  const { roomId, agents, history, auto } = body;
 
-  if (!roomId || !Array.isArray(agents) || agents.length === 0) {
-    return Response.json(
-      { error: "Se requieren roomId y al menos un agente" },
-      { status: 400 },
-    );
+  if (!roomId) {
+    return Response.json({ error: "Falta roomId" }, { status: 400 });
   }
 
-  const resolved = agents
-    .map((slug) => AGENT_BY_SLUG.get(slug))
-    .filter((a): a is AgentDef => a !== undefined);
-
-  if (resolved.length === 0) {
-    return Response.json({ error: "Ningun agente valido" }, { status: 400 });
-  }
-
-  // Secuencial y no en paralelo: cada agente ve lo que dijo el anterior,
-  // que es lo que convierte tres respuestas sueltas en una conversacion.
   const transcript: ChatMessage[] = [...(history ?? [])];
   const runIds: string[] = [];
 
-  for (const agent of resolved) {
+  /** Ejecuta un agente y deja su respuesta en el transcript compartido. */
+  const speak = async (agent: AgentDef) => {
     const { runId, text } = await runAgent(roomId, agent, transcript);
     runIds.push(runId);
     if (text) {
@@ -75,7 +69,38 @@ export async function POST(request: Request) {
         content: `${agent.name} (${agent.role}) respondio: ${text}`,
       });
     }
+  };
+
+  const resolved = (agents ?? [])
+    .map((slug) => AGENT_BY_SLUG.get(slug))
+    .filter((a): a is AgentDef => a !== undefined);
+
+  // --- Camino 1: alguien fue mencionado explicitamente ---
+  if (resolved.length > 0) {
+    // Secuencial y no en paralelo: cada agente ve lo que dijo el anterior,
+    // que es lo que convierte tres respuestas sueltas en una conversacion.
+    for (const agent of resolved) await speak(agent);
+    return Response.json({ ok: true, runIds });
   }
+
+  // --- Camino 2: sala viva, nadie fue mencionado ---
+  if (!auto) {
+    return Response.json({ error: "Ningun agente valido" }, { status: 400 });
+  }
+
+  const responder = await pickResponder(transcript);
+  if (!responder) {
+    // Que nadie conteste es una respuesta valida: evita la sala donde
+    // alguien salta ante cada "hola" y todo suena artificial.
+    return Response.json({ ok: true, runIds, skipped: true });
+  }
+
+  await speak(responder);
+
+  // Como mucho una interrupcion por mensaje humano: sin ese tope, los
+  // agentes se responderian entre ellos indefinidamente.
+  const interjector = await pickInterjector(transcript, responder);
+  if (interjector) await speak(interjector);
 
   return Response.json({ ok: true, runIds });
 }

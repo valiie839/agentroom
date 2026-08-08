@@ -201,6 +201,74 @@ export function activeModel(): string {
   return DEFAULT_MODELS[provider];
 }
 
+/**
+ * Modelo pequeño y rápido para decisiones internas (enrutado), donde solo
+ * se esperan unas pocas palabras y la latencia importa más que la calidad.
+ */
+const FAST_MODELS: Record<Provider, string> = {
+  groq: "llama-3.1-8b-instant",
+  gemini: "gemini-2.5-flash-lite",
+};
+
+/**
+ * Una respuesta corta, sin streaming. Se usa para el enrutado: decidir qué
+ * agente debe hablar no es algo que el usuario vea escribirse, así que no
+ * tiene sentido pagar el coste de transmitirlo.
+ */
+export async function completeFast(
+  messages: ChatMessage[],
+  maxTokens = 12,
+): Promise<string> {
+  const provider = resolveProvider();
+
+  if (provider === "gemini") {
+    const system = messages.filter((m) => m.role === "system");
+    const turns = messages.filter((m) => m.role !== "system");
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${FAST_MODELS.gemini}:generateContent`,
+      {
+        method: "POST",
+        headers: {
+          "x-goog-api-key": requireKey("GEMINI_API_KEY"),
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          contents: turns.map((m) => ({
+            role: m.role === "assistant" ? "model" : "user",
+            parts: [{ text: m.content }],
+          })),
+          ...(system.length > 0 && {
+            systemInstruction: { parts: system.map((m) => ({ text: m.content })) },
+          }),
+          generationConfig: { temperature: 0, maxOutputTokens: maxTokens },
+        }),
+      },
+    );
+    if (!res.ok) throw new Error(`Gemini respondio ${res.status}`);
+    const data = (await res.json()) as GeminiChunk;
+    return data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? "";
+  }
+
+  const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${requireKey("GROQ_API_KEY")}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: FAST_MODELS.groq,
+      messages,
+      temperature: 0,
+      max_tokens: maxTokens,
+    }),
+  });
+  if (!res.ok) throw new Error(`Groq respondio ${res.status}`);
+  const data = (await res.json()) as {
+    choices?: Array<{ message?: { content?: string } }>;
+  };
+  return data.choices?.[0]?.message?.content?.trim() ?? "";
+}
+
 // --- Formas minimas de las respuestas, solo lo que consumimos ---
 
 interface GroqChunk {

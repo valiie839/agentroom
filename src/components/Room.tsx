@@ -48,6 +48,8 @@ export function Room({ roomId, me }: { roomId: string; me: PresenceMeta }) {
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
+  /** Con la sala viva, los agentes deciden solos cuando intervenir. */
+  const [liveRoom, setLiveRoom] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const {
@@ -157,7 +159,11 @@ export function Room({ roomId, me }: { roomId: string; me: PresenceMeta }) {
   const invoke = useCallback(
     async (text: string) => {
       const mentioned = parseMentions(text);
-      if (mentioned.length === 0) return;
+
+      // Sin mencion explicita, el servidor decide si alguien interviene.
+      // Es lo que hace que no tengas que escribir "@nova" cada vez para
+      // que la sala deje de estar muda.
+      if (mentioned.length === 0 && !liveRoom) return;
 
       // Contexto reciente para que los agentes sepan de que se habla.
       // Todo el historial va como turnos de usuario, incluidas las
@@ -186,13 +192,14 @@ export function Room({ roomId, me }: { roomId: string; me: PresenceMeta }) {
             roomId,
             agents: mentioned.map((a) => a.slug),
             history,
+            auto: mentioned.length === 0,
           }),
         });
       } finally {
         setBusy(false);
       }
     },
-    [visible, roomId, me.name],
+    [visible, roomId, me.name, liveRoom],
   );
 
   const submit = useCallback(async () => {
@@ -267,11 +274,22 @@ export function Room({ roomId, me }: { roomId: string; me: PresenceMeta }) {
         </div>
 
         <p className="mt-auto text-[11px] leading-relaxed text-neutral-600">
-          Menciona <code className="text-neutral-400">@nova</code>,{" "}
-          <code className="text-neutral-400">@atlas</code> o{" "}
-          <code className="text-neutral-400">@pixel</code>. Usa{" "}
-          <code className="text-neutral-400">@todos</code> para que delibere
-          el equipo completo.
+          {liveRoom ? (
+            <>
+              Escribe con normalidad y responderá quien corresponda —o nadie,
+              si no hace falta. Menciona a uno para forzarlo, o{" "}
+              <code className="text-neutral-400">@todos</code> para que
+              delibere el equipo completo.
+            </>
+          ) : (
+            <>
+              Menciona <code className="text-neutral-400">@nova</code>,{" "}
+              <code className="text-neutral-400">@atlas</code> o{" "}
+              <code className="text-neutral-400">@pixel</code>. Usa{" "}
+              <code className="text-neutral-400">@todos</code> para que
+              delibere el equipo completo.
+            </>
+          )}
         </p>
       </aside>
 
@@ -284,15 +302,32 @@ export function Room({ roomId, me }: { roomId: string; me: PresenceMeta }) {
               Comparte esta URL para que otra persona entre al mismo room
             </p>
           </div>
-          <span
-            className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] ${
-              status === "ready"
-                ? "bg-emerald-400/10 text-emerald-300"
-                : "bg-amber-400/10 text-amber-300"
-            }`}
-          >
-            {status}
-          </span>
+          <div className="flex shrink-0 items-center gap-2">
+            <button
+              onClick={() => setLiveRoom((v) => !v)}
+              title={
+                liveRoom
+                  ? "Los agentes deciden solos cuándo intervenir"
+                  : "Los agentes solo responden si los mencionas"
+              }
+              className={`rounded-full border px-2.5 py-0.5 text-[11px] transition ${
+                liveRoom
+                  ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-300"
+                  : "border-white/15 text-neutral-500"
+              }`}
+            >
+              {liveRoom ? "● sala viva" : "○ solo menciones"}
+            </button>
+            <span
+              className={`rounded-full px-2 py-0.5 text-[11px] ${
+                status === "ready"
+                  ? "bg-emerald-400/10 text-emerald-300"
+                  : "bg-amber-400/10 text-amber-300"
+              }`}
+            >
+              {status}
+            </span>
+          </div>
         </header>
 
         <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto p-4">
@@ -362,7 +397,11 @@ export function Room({ roomId, me }: { roomId: string; me: PresenceMeta }) {
                   void submit();
                 }
               }}
-              placeholder="Escribe un mensaje… menciona @nova, @atlas, @pixel o @todos"
+              placeholder={
+                liveRoom
+                  ? "Escribe con normalidad: el agente adecuado responderá solo"
+                  : "Menciona @nova, @atlas, @pixel o @todos"
+              }
               className="flex-1 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none placeholder:text-neutral-600 focus:border-white/25"
             />
             <button
