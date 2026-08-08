@@ -56,6 +56,7 @@ export function Room({ roomId, me }: { roomId: string; me: PresenceMeta }) {
     presence,
     typing,
     sendTyping,
+    setMetadata,
     status,
     me: identity,
   } = useChannel<RoomContent>({
@@ -129,6 +130,14 @@ export function Room({ roomId, me }: { roomId: string; me: PresenceMeta }) {
     });
   }, [visible.length, drafts]);
 
+  // Reafirma el nombre en cuanto el canal queda listo, incluidas las
+  // reconexiones. La metadata inicial se manda al montar, antes de que
+  // exista socket; si esa primera propagacion se pierde, el resto de la
+  // sala te ve como "conectando..." el resto de la sesion.
+  useEffect(() => {
+    if (status === "ready") setMetadata(me as unknown as Record<string, unknown>);
+  }, [status, setMetadata, me]);
+
   // Barrido de borradores huerfanos (ver DRAFT_TIMEOUT_MS).
   useEffect(() => {
     const id = setInterval(() => {
@@ -194,10 +203,11 @@ export function Room({ roomId, me }: { roomId: string; me: PresenceMeta }) {
     void invoke(text);
   }, [input, send, me.name, invoke]);
 
-  const humans =
-    presence?.kind === "detailed"
-      ? presence.participants.filter((p) => namesById.has(p.id))
-      : [];
+  // Se listan TODOS los participantes conectados, tengan metadata o no.
+  // Filtrar por metadata escondia a quien acababa de entrar y todavia no
+  // habia propagado su nombre, dejando el panel en desacuerdo entre
+  // pantallas: una veia dos personas y la otra solo a si misma.
+  const humans = presence?.kind === "detailed" ? presence.participants : [];
   const activeAgents = new Set(Object.values(drafts).map((d) => d.agentSlug));
 
   return (
@@ -206,7 +216,7 @@ export function Room({ roomId, me }: { roomId: string; me: PresenceMeta }) {
       <aside className="hidden w-60 shrink-0 flex-col gap-6 border-r border-white/10 p-4 md:flex">
         <div>
           <h2 className="mb-2 text-xs font-semibold uppercase tracking-wider text-neutral-500">
-            Personas · {humans.length}
+            Personas · {presence?.count ?? humans.length}
           </h2>
           <ul className="space-y-1">
             {humans.map((p) => {
@@ -214,10 +224,10 @@ export function Room({ roomId, me }: { roomId: string; me: PresenceMeta }) {
               return (
                 <li key={p.id} className="flex items-center gap-2 text-sm">
                   <span className="grid h-6 w-6 place-items-center rounded-full bg-white/10 text-xs">
-                    {meta?.avatar ?? "?"}
+                    {meta?.avatar ?? "·"}
                   </span>
                   <span className="truncate text-neutral-300">
-                    {meta?.name}
+                    {meta?.name ?? "conectando…"}
                     {p.id === identity?.id && (
                       <span className="text-neutral-500"> (tú)</span>
                     )}
