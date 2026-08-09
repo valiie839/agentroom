@@ -14,7 +14,7 @@
  * Las tres son publicas, sin clave y sin cuota.
  */
 
-export type SourceId = "usgs" | "wikipedia" | "hackernews";
+export type SourceId = "usgs" | "wikipedia" | "hackernews" | "ensayo";
 
 export interface FeedEvent {
   /** Id estable de la fuente. Es la clave para no publicar duplicados. */
@@ -208,11 +208,55 @@ const hackernews: FeedSource = {
 };
 
 // --------------------------------------------------------------------
+// Ensayo
+// --------------------------------------------------------------------
+
+/**
+ * Hechos de ensayo, para probar la sala sin depender del mundo.
+ *
+ * Las tres fuentes reales pueden dejar la sala quieta en el peor momento:
+ * el USGS pasa horas sin un sismo sobre el umbral, y una sala donde ya se
+ * anunciaron todos los hechos recientes no vuelve a moverse por mucho que
+ * se recargue. Esta fuente garantiza un hecho nuevo cada vez.
+ *
+ * Va etiquetada como "Ensayo" en la interfaz y cita "Ensayo" como origen:
+ * quien la use ve claramente que no esta mirando el mundo real.
+ */
+const GUION = [
+  "Sismo de magnitud 6.1 frente a la costa de Valparaiso, Chile, a 33 km de profundidad.",
+  "Corte de energia reportado en tres distritos de Lima; la empresa distribuidora no ha dado plazo de restablecimiento.",
+  "Un servicio de pagos usado por la mitad de los comercios del pais lleva 12 minutos sin responder.",
+  "Sismo de magnitud 4.4 en el golfo de California, sin alerta de tsunami emitida.",
+  "Retraso generalizado en vuelos de salida del aeropuerto de Bogota por niebla densa.",
+];
+
+const ensayo: FeedSource = {
+  id: "ensayo",
+  label: "Ensayo",
+  kind: "hechos de ensayo, no del mundo real",
+  attribution: "Ensayo",
+  async fetchLatest(limit) {
+    const now = Date.now();
+    // Id unico por llamada: nunca coincide con lo ya publicado, asi que
+    // siempre entra un hecho nuevo por mucho que se repita la toma.
+    return [
+      {
+        id: `ensayo-${now}`,
+        detail: GUION[Math.floor(Math.random() * GUION.length)],
+        url: "",
+        time: now,
+      },
+    ].slice(0, limit);
+  },
+};
+
+// --------------------------------------------------------------------
 
 export const SOURCES: Record<SourceId, FeedSource> = {
   usgs,
   wikipedia,
   hackernews,
+  ensayo,
 };
 
 export const SOURCE_LIST = Object.values(SOURCES);

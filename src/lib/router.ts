@@ -117,6 +117,33 @@ Una sola palabra, sin explicaciones.`,
   return picked?.slug === alreadySpoke.slug ? undefined : picked;
 }
 
+/**
+ * Instruccion para quien interrumpe.
+ *
+ * Le pide citar explicitamente al anterior antes de aportar lo suyo. Sin
+ * esto la relacion entre las dos respuestas quedaba implicita: se leian
+ * como dos opiniones sueltas puestas una debajo de otra, en vez de como
+ * una conversacion donde la segunda responde a la primera. Citar es lo
+ * que hace visible que se estan escuchando.
+ */
+export function interjectionNudge(
+  previous: AgentDef,
+  interjector: AgentDef,
+): ChatMessage {
+  return {
+    role: "user",
+    content: `${interjector.name}, ahora hablas tu.
+
+Empieza refiriendote en pocas palabras a lo que acaba de decir
+${previous.name} ("${previous.name} dice que...", "coincido con
+${previous.name} en que...", "no comparto que..."), y sigue con lo tuyo
+desde tu papel de ${interjector.role}.
+
+No lo resumas entero ni lo repitas: aporta algo que ${previous.name} no
+dijo. Si discrepas, dilo sin rodeos. Una o dos frases.`,
+  };
+}
+
 /** El modelo pequeño a veces adorna la respuesta; se busca el slug dentro. */
 function matchSlug(raw: string): AgentDef | undefined {
   const clean = raw.toLowerCase().replace(/[^a-z]/g, " ");

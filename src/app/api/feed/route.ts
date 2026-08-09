@@ -15,10 +15,11 @@
  * si no hay nadie en la sala, no hay nada que anunciar.
  */
 
+import type { ChatMessage } from "@/lib/ai";
 import { resolveSource } from "@/lib/feed";
 import { publishToRoom } from "@/lib/portal-server";
 import { AGENTS, AGENT_BY_SLUG } from "@/lib/agents";
-import { pickInterjector } from "@/lib/router";
+import { interjectionNudge, pickInterjector } from "@/lib/router";
 import { publishToolCall, runAgent } from "@/lib/run-agent";
 import { MSG } from "@/lib/room-types";
 
@@ -109,9 +110,9 @@ export async function POST(request: Request) {
   ).catch(() => {});
 
   // 3. Y alguien lo comenta.
-  const transcript = [
+  const transcript: ChatMessage[] = [
     {
-      role: "user" as const,
+      role: "user",
       content: `Acaba de entrar este hecho a la sala desde ${source.attribution} (${source.kind}):
 
 ${fresh.detail}
@@ -129,7 +130,7 @@ arriba.`,
   //    que es lo que hace que parezca una conversacion y no una alerta.
   if (text) {
     transcript.push({
-      role: "user" as const,
+      role: "user",
       content: `${ANALYST.name} (${ANALYST.role}) respondio: ${text}`,
     });
 
@@ -138,15 +139,7 @@ arriba.`,
     });
 
     if (interjector) {
-      // Sin esta instruccion el segundo agente parafraseaba al primero y
-      // asentia. Una segunda voz que repite no aporta nada: lo que hace
-      // interesante la sala es que cada uno mire el hecho desde su rol.
-      transcript.push({
-        role: "user",
-        content: `${interjector.name}, di lo tuyo. No repitas ni resumas lo
-que dijo ${ANALYST.name}: aporta el angulo de tu papel (${interjector.role}).
-Si discrepas, dilo directamente. Una o dos frases.`,
-      });
+      transcript.push(interjectionNudge(ANALYST, interjector));
       await runAgent(roomId, interjector, transcript);
     }
   }

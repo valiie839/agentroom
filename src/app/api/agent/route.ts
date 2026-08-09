@@ -12,7 +12,7 @@
 
 import type { ChatMessage } from "@/lib/ai";
 import { AGENT_BY_SLUG, type AgentDef } from "@/lib/agents";
-import { pickInterjector, pickResponder } from "@/lib/router";
+import { interjectionNudge, pickInterjector, pickResponder } from "@/lib/router";
 import { runAgent } from "@/lib/run-agent";
 import { publishMessage } from "@/lib/portal-server";
 import { MSG, watchChannelIdFor } from "@/lib/room-types";
@@ -113,7 +113,10 @@ export async function POST(request: Request) {
   // Como mucho una interrupcion por mensaje humano: sin ese tope, los
   // agentes se responderian entre ellos indefinidamente.
   const interjector = await pickInterjector(transcript, responder);
-  if (interjector) await speak(interjector);
+  if (interjector) {
+    transcript.push(interjectionNudge(responder, interjector));
+    await speak(interjector);
+  }
 
   return Response.json({ ok: true, runIds });
 }
