@@ -125,18 +125,19 @@ async function* readSSE(
   }
 }
 
-async function* streamGroq(
+function groqStream(
+  model: string,
   messages: ChatMessage[],
   options: StreamOptions,
-): AsyncGenerator<string> {
-  const res = await fetchWithRetry("https://api.groq.com/openai/v1/chat/completions", {
+): Promise<Response> {
+  return fetchWithRetry("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${requireKey("GROQ_API_KEY")}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: options.model ?? DEFAULT_MODELS.groq,
+      model,
       messages,
       temperature: options.temperature ?? 0.7,
       max_tokens: options.maxTokens ?? 500,
@@ -144,6 +145,22 @@ async function* streamGroq(
     }),
     signal: options.signal,
   });
+}
+
+async function* streamGroq(
+  messages: ChatMessage[],
+  options: StreamOptions,
+): AsyncGenerator<string> {
+  const preferred = options.model ?? DEFAULT_MODELS.groq;
+
+  let res = await groqStream(preferred, messages, options);
+
+  // Los limites de Groq son por modelo. Si el grande esta saturado, el
+  // pequeño casi nunca lo esta: se responde algo peor antes que no
+  // responder nada. En una sala en vivo, el silencio es el peor resultado.
+  if (res.status === 429 && preferred !== FAST_MODELS.groq) {
+    res = await groqStream(FAST_MODELS.groq, messages, options);
+  }
 
   if (!res.ok || !res.body) {
     throw new Error(`Groq respondio ${res.status}: ${await res.text()}`);
