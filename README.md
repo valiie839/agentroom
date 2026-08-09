@@ -14,20 +14,28 @@ Agentroom invierte eso. Los agentes son **participantes del canal**: aparecen en
 
 La consecuencia práctica: si dos personas tienen abierta la misma sala, **ambas ven la respuesta escribirse al mismo tiempo, carácter a carácter**. No hay "mi conversación" y "tu conversación". Hay una sola, compartida.
 
+## Los tres tipos de participante
+
+Una sala contiene a la vez **personas**, **agentes** y una **fuente de datos en vivo**. Los tres publican en el mismo canal de Portal.
+
+| Participante | Qué aporta |
+|---|---|
+| Nova, analista | Descompone el problema y señala supuestos ocultos |
+| Atlas, estratega | Propone planes con pasos y trade-offs |
+| Pixel, crítico | Busca el punto débil y ofrece alternativa |
+| Feed USGS | Sismos reales, conforme ocurren |
+
 ## Cómo se usa
 
-1. Abre la app y crea una sala.
-2. Pásale la URL a alguien (o ábrela en dos ventanas).
-3. Escribe mencionando a un agente:
+Abre una sala, pásale la URL a alguien (o ábrela en dos ventanas) y **escribe con normalidad**.
 
-| Mención | Agente | Qué hace |
-|---|---|---|
-| `@nova` | Nova, analista | Descompone el problema, señala supuestos ocultos |
-| `@atlas` | Atlas, estratega | Propone planes concretos con pasos y trade-offs |
-| `@pixel` | Pixel, crítico | Busca el punto débil y ofrece alternativa |
-| `@todos` | Los tres | Deliberan **en secuencia**, leyendo lo que dijo el anterior |
+**No hace falta mencionar a nadie.** Un modelo pequeño decide quién debería intervenir según lo que dijiste — y tiene "nadie" como opción de primera clase: a un "hola" o un "gracias" no responde ninguno. Una sala donde alguien contesta absolutamente todo es tan artificial como una muda.
 
-`@todos` es donde se ve la idea completa: no son tres respuestas sueltas en paralelo, es una discusión que se construye encima de sí misma en vivo.
+Cuando alguien responde, se evalúa si **otro agente tiene una objeción sustantiva**. Si la tiene, interrumpe. Es lo que hace que la sala se sienta viva en vez de por turnos.
+
+Puedes seguir forzando a uno con `@nova`, `@atlas` o `@pixel`, y `@todos` los pone a deliberar en secuencia, cada uno leyendo lo que dijo el anterior.
+
+Y sin que nadie escriba nada, **entra un sismo real**: la sala muestra el hecho, la consulta que lo trajo, y el análisis de Nova.
 
 ## Cómo usamos Portal
 
@@ -37,12 +45,20 @@ Cuando invocas a un agente, el navegador hace un `POST /api/agent` que **no devu
 
 | Primitiva de Portal | Uso |
 |---|---|
-| Canal de vocabulario mixto | Humanos y agentes publican en el mismo stream, discriminado por `type` |
-| Mensajes **efímeros** | Fragmentos del texto en curso (alta frecuencia, fuera del historial) |
-| Mensajes persistentes | Mensajes humanos y respuesta final consolidada |
+| Canal de vocabulario mixto | Personas, agentes y la fuente en vivo publican en el mismo stream, discriminado por `type` |
+| Mensajes persistentes | Mensajes humanos, respuesta final, eventos de la fuente |
+| Fragmentos de streaming | El texto en curso, agrupado cada ~120 ms, filtrado del historial al renderizar |
 | **Presencia** + `setMetadata` | Roster de participantes; el nombre visible viaja como metadata |
 | `typing` / `sendActivity` | Indicador de escritura entre personas |
-| Publicación server-side (`sk_`) | Los agentes hablan sin navegador: siguen vivos aunque cierres la pestaña |
+| Publicación server-side (`sk_`) | Agentes y fuente hablan sin navegador: la sala sigue viva aunque cierres la pestaña |
+
+### Dos caminos que no funcionaron
+
+Vale la pena dejarlos escritos, por si le ahorran tiempo a alguien.
+
+**Mensajes efímeros desde el cliente.** `send({ ephemeral: true })` resuelve sin error, pero el mensaje no llega a los demás participantes ni vuelve al propio emisor. Los únicos efímeros que sí se reparten son los publicados desde el servidor — y esos llegan con `seq`, es decir, persistidos. Por eso el streaming filtra por `type` al renderizar en lugar de apoyarse en la no-persistencia.
+
+**Cursores en vivo.** Se intentaron las dos vías que documenta Portal: efímeros (por lo anterior) y metadata de presencia. La metadata propaga en el snapshot inicial de conexión, pero las actualizaciones posteriores no alcanzan a quienes ya estaban conectados. Se retiró la funcionalidad en vez de dejarla a medias.
 
 Esa última fila importa más de lo que parece. Si el agente viviera en el navegador de quien lo invoca, alguien que abre la URL solo encontraría una sala muerta. Corriendo en el servidor, la sala está siempre viva.
 
@@ -50,12 +66,16 @@ Esa última fila importa más de lo que parece. Si el agente viviera en el naveg
 
 Todo el tráfico va por un `channelId` y se distingue con `type`:
 
-| `type` | Emisor | Persistente |
+| `type` | Emisor | Rol |
 |---|---|---|
-| `message` | Humano | sí |
-| `agent:thinking` | Agente | no — dispara el indicador |
-| `agent:token` | Agente | no — fragmento del stream |
-| `agent:message` | Agente | sí — respuesta final |
+| `message` | Humano | lo que escribe una persona |
+| `agent:thinking` | Agente | dispara el indicador de escritura |
+| `agent:token` | Agente | fragmento del stream, fuera del historial |
+| `agent:message` | Agente | respuesta final consolidada |
+| `agent:tool` | Agente | de dónde sacó el dato |
+| `feed:event` | Fuente en vivo | un hecho del mundo real |
+
+Que `feed:event` viaje por el mismo canal, con su propio `senderId`, es deliberado: la fuente no es un servicio que la app consulta, es **un participante más de la sala**.
 
 El cliente acumula los `agent:token` por `runId` para reconstruir la burbuja en vuelo, y la descarta cuando llega el `agent:message` definitivo.
 
@@ -100,16 +120,20 @@ La clave secreta de Portal solo se usa en el servidor: `src/lib/portal-server.ts
 ```
 src/
 ├── app/
-│   ├── api/agent/route.ts   # ejecuta agentes y publica su progreso
+│   ├── api/agent/route.ts   # quién habla: mención explícita o enrutado
+│   ├── api/feed/route.ts    # trae la fuente en vivo a la sala
 │   ├── room/[roomId]/       # la sala
 │   ├── providers.tsx        # PortalProvider en modo anónimo
 │   └── page.tsx             # landing
 ├── components/
-│   ├── Room.tsx             # presencia, streaming, menciones
+│   ├── Room.tsx             # presencia, streaming, feed, menciones
 │   └── RoomGate.tsx         # nombre visible, sin login
 └── lib/
-    ├── ai.ts                # adaptador de LLM con streaming
+    ├── ai.ts                # adaptador de LLM (streaming + decisiones)
     ├── agents.ts            # roster y parser de menciones
+    ├── router.ts            # decide quién interviene, o si nadie
+    ├── run-agent.ts         # el motor de un turno de agente
+    ├── feed.ts              # la fuente en vivo (aislada aquí)
     ├── portal-client.ts     # cliente de navegador (pk_)
     ├── portal-server.ts     # publicación server-side (sk_)
     └── room-types.ts        # vocabulario del canal
@@ -120,5 +144,11 @@ src/
 **Sin registro.** Portal da identidad anónima estable entre recargas, así que nadie necesita crear cuenta: abres la URL y ya estás dentro. El nombre visible es solo metadata de presencia. Para una demo pública esto es decisivo.
 
 **Los agentes corren en secuencia, no en paralelo.** Es más lento, y es a propósito: cada uno recibe lo que dijo el anterior. Es lo que convierte tres respuestas en una conversación.
+
+**"Nadie" es una respuesta válida del enrutador.** Costó más ajustarlo que hacer que respondieran: el instinto es que el producto luzca contestando siempre, pero una sala que salta ante cada saludo se siente falsa en diez segundos.
+
+**Las respuestas de otros agentes se anotan como turnos de usuario**, no de assistant. Con rol assistant, la conversación terminaba en un turno del modelo y Groq devolvía vacío de forma intermitente: Nova funcionaba siempre —iba primera— y Atlas y Pixel respondían en blanco.
+
+**Un solo cliente sondea la fuente**, elegido por el id más bajo de la sala. Es una regla determinista que todos evalúan igual sin coordinarse; con cada pestaña sondeando, el mismo sismo se anunciaría varias veces.
 
 **Los errores se ven dentro de la sala.** Si un agente falla —rate limit, timeout— lo publica como mensaje visible en vez de quedarse callado.
