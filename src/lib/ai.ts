@@ -65,7 +65,10 @@ function requireKey(name: string): string {
 async function fetchWithRetry(
   url: string,
   init: RequestInit,
-  attempts = 3,
+  // Un solo reintento: con tres agentes en secuencia, esperar mas de una
+  // vez por cada uno acercaba la peticion al corte de 60s de Vercel. Si el
+  // reintento no basta, quien resuelve es la degradacion a otro modelo.
+  attempts = 2,
 ): Promise<Response> {
   let last: Response | undefined;
 

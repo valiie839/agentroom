@@ -20,6 +20,8 @@ import { AGENTS, AGENT_BY_SLUG, parseMentions } from "@/lib/agents";
 import {
   MSG,
   channelIdFor,
+  avatarColor,
+  initialOf,
   TRANSIENT_TYPES,
   type AgentMessageContent,
   type AgentThinkingContent,
@@ -61,9 +63,7 @@ export function Room({ roomId, me }: { roomId: string; me: PresenceMeta }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   /**
    * Bolso completo de metadata de presencia. Portal reemplaza el bag entero
-   * en cada setMetadata, asi que hay que mandarlo siempre completo: enviar
-   * solo {cursor} borraria el nombre, y enviar solo {name} borraria el
-   * cursor -- que es justo lo que pasaba, dejando los punteros invisibles.
+   * en cada setMetadata, no lo fusiona, asi que siempre se manda completo.
    */
   const metaRef = useRef<Record<string, unknown>>({ ...me });
   const lastStatus = useRef<string>("");
@@ -210,8 +210,9 @@ export function Room({ roomId, me }: { roomId: string; me: PresenceMeta }) {
   // exista socket; si esa primera propagacion se pierde, el resto de la
   // sala te ve como "conectando..." el resto de la sesion.
   useEffect(() => {
-    // Solo en la transicion real a "ready". Sin el guardia, el efecto se
-    // reejecuta en cada render y reescribe el bag, borrando el cursor.
+    // Solo en la transicion real a "ready": `setMetadata` cambia de
+    // identidad en cada render, y sin el guardia el efecto se reejecutaria
+    // constantemente reescribiendo el bag.
     if (status === "ready" && lastStatus.current !== "ready") {
       setMetadata(metaRef.current);
     }
@@ -308,8 +309,10 @@ export function Room({ roomId, me }: { roomId: string; me: PresenceMeta }) {
               const meta = namesById.get(p.id);
               return (
                 <li key={p.id} className="flex items-center gap-2 text-sm">
-                  <span className="grid h-6 w-6 place-items-center rounded-full bg-white/10 text-xs">
-                    {meta?.avatar ?? "·"}
+                  <span
+                    className={`grid h-6 w-6 place-items-center rounded-full text-[11px] font-semibold ${avatarColor(p.id)}`}
+                  >
+                    {initialOf(meta?.name)}
                   </span>
                   <span className="truncate text-neutral-300">
                     {meta?.name ?? "conectando…"}

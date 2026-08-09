@@ -13,7 +13,6 @@ import { Room } from "@/components/Room";
 import type { PresenceMeta } from "@/lib/room-types";
 
 const STORAGE_KEY = "agentroom:me";
-const AVATARS = ["🦊", "🐙", "🦉", "🐢", "🦋", "🐝", "🦕", "🐈"];
 
 export function RoomGate({ roomId }: { roomId: string }) {
   const [me, setMe] = useState<PresenceMeta | null>(null);
@@ -38,10 +37,7 @@ export function RoomGate({ roomId }: { roomId: string }) {
     const join = () => {
       const trimmed = name.trim();
       if (!trimmed) return;
-      const meta: PresenceMeta = {
-        name: trimmed.slice(0, 24),
-        avatar: AVATARS[Math.floor(Math.random() * AVATARS.length)],
-      };
+      const meta: PresenceMeta = { name: trimmed.slice(0, 24) };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(meta));
       setMe(meta);
     };
