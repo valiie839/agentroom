@@ -23,6 +23,8 @@ import {
   type AgentMessageContent,
   type AgentThinkingContent,
   type AgentTokenContent,
+  type AgentToolContent,
+  type FeedEventContent,
   type HumanContent,
   type PresenceMeta,
   type RoomContent,
@@ -44,12 +46,17 @@ interface Draft {
  */
 const DRAFT_TIMEOUT_MS = 25_000;
 
+/** Cada cuanto se le pregunta a la fuente en vivo si paso algo nuevo. */
+const FEED_POLL_MS = 30_000;
+
 export function Room({ roomId, me }: { roomId: string; me: PresenceMeta }) {
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   /** Con la sala viva, los agentes deciden solos cuando intervenir. */
   const [liveRoom, setLiveRoom] = useState(true);
+  /** Con la fuente conectada, la sala recibe hechos del mundo real. */
+  const [liveFeed, setLiveFeed] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
   /**
    * Bolso completo de metadata de presencia. Portal reemplaza el bag entero
@@ -132,6 +139,63 @@ export function Room({ roomId, me }: { roomId: string; me: PresenceMeta }) {
     }
     return map;
   }, [presence]);
+
+  /**
+   * Solo un cliente sondea la fuente, o cada pestaña abierta anunciaria el
+   * mismo sismo. Se elige por regla determinista -- el id mas bajo de la
+   * sala -- para que todos coincidan sin negociar nada entre ellos.
+   */
+  const isFeedDriver = useMemo(() => {
+    if (!identity || presence?.kind !== "detailed") return false;
+    const ids = presence.participants.map((p) => p.id).sort();
+    return ids[0] === identity.id;
+  }, [presence, identity]);
+
+  /** Eventos de la fuente ya presentes, para no repetirlos. */
+  const knownEventIds = useMemo(
+    () =>
+      visible
+        .filter((m) => m.type === MSG.FEED_EVENT)
+        .map((m) => (m.content as FeedEventContent).eventId),
+    [visible],
+  );
+
+  useEffect(() => {
+    if (!isFeedDriver || !liveFeed || status !== "ready") return;
+
+    let cancelled = false;
+    const check = async () => {
+      if (cancelled) return;
+      try {
+        await fetch("/api/feed", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ roomId, knownIds: knownEventIdsRef.current }),
+        });
+      } catch {
+        // La sala no depende del feed: si falla, se reintenta al siguiente.
+      }
+    };
+
+    // Se consulta pronto, para que quien entra vea señales de vida sin
+    // esperar medio minuto -- pero no de inmediato: el historial del canal
+    // llega poco despues de `ready`, y sondear antes de tenerlo hacia que
+    // la sala volviera a anunciar un evento que ya estaba publicado.
+    const first = setTimeout(check, 2_500);
+    const id = setInterval(check, FEED_POLL_MS);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(first);
+      clearInterval(id);
+    };
+  }, [isFeedDriver, liveFeed, roomId, status]);
+
+  // Los ids viajan por ref para que actualizarlos no reinicie el intervalo.
+  const knownEventIdsRef = useRef<string[]>([]);
+  useEffect(() => {
+    knownEventIdsRef.current = knownEventIds;
+  }, [knownEventIds]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({
@@ -331,6 +395,21 @@ export function Room({ roomId, me }: { roomId: string; me: PresenceMeta }) {
             >
               {liveRoom ? "● sala viva" : "○ solo menciones"}
             </button>
+            <button
+              onClick={() => setLiveFeed((v) => !v)}
+              title={
+                liveFeed
+                  ? "La sala recibe sismos del USGS conforme ocurren"
+                  : "Fuente en vivo desconectada"
+              }
+              className={`rounded-full border px-2.5 py-0.5 text-[11px] transition ${
+                liveFeed
+                  ? "border-orange-400/40 bg-orange-400/10 text-orange-300"
+                  : "border-white/15 text-neutral-500"
+              }`}
+            >
+              {liveFeed ? "● feed USGS" : "○ sin feed"}
+            </button>
             <span
               className={`rounded-full px-2 py-0.5 text-[11px] ${
                 status === "ready"
@@ -358,6 +437,17 @@ export function Room({ roomId, me }: { roomId: string; me: PresenceMeta }) {
                 <AgentBubble key={m.id} slug={c.agentSlug} text={c.text} />
               );
             }
+
+            if (m.type === MSG.FEED_EVENT) {
+              const c = m.content as FeedEventContent;
+              return <FeedCard key={m.id} event={c} />;
+            }
+
+            if (m.type === MSG.AGENT_TOOL) {
+              const c = m.content as AgentToolContent;
+              return <ToolCard key={m.id} call={c} />;
+            }
+
             const c = m.content as HumanContent;
             const mine = m.sender.id === identity?.id;
             return (
@@ -430,6 +520,45 @@ export function Room({ roomId, me }: { roomId: string; me: PresenceMeta }) {
         </div>
       </section>
     </div>
+  );
+}
+
+/**
+ * Un hecho del mundo real entrando a la sala. Se muestra distinto a los
+ * mensajes a proposito: no lo dijo nadie de los presentes, ocurrio.
+ */
+function FeedCard({ event }: { event: FeedEventContent }) {
+  return (
+    <div className="my-2 rounded-xl border border-orange-400/30 bg-orange-400/5 px-3 py-2">
+      <p className="mb-1 flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider text-orange-300/80">
+        <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-orange-400" />
+        En vivo · {event.source}
+      </p>
+      <p className="text-sm text-neutral-200">{event.detail}</p>
+      {event.url && (
+        <a
+          href={event.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-1 inline-block text-[11px] text-orange-300/70 underline-offset-2 hover:underline"
+        >
+          Ver en {event.source}
+        </a>
+      )}
+    </div>
+  );
+}
+
+/** De donde salio el dato, antes de que alguien saque conclusiones. */
+function ToolCard({ call }: { call: AgentToolContent }) {
+  const agent = AGENT_BY_SLUG.get(call.agentSlug);
+  return (
+    <p className="flex items-center gap-1.5 pl-1 font-mono text-[11px] text-neutral-500">
+      <span className="text-neutral-600">⌁</span>
+      {agent?.name ?? call.agentSlug} consultó{" "}
+      <code className="text-neutral-400">{call.tool}</code>
+      {call.detail && <span className="truncate">— {call.detail}</span>}
+    </p>
   );
 }
 

@@ -18,6 +18,11 @@ export const MSG = {
   AGENT_TOOL: "agent:tool",
   /** Respuesta final consolidada. Esto si queda en el historial. */
   AGENT_MESSAGE: "agent:message",
+  /**
+   * Algo que ocurrio en el mundo y entro a la sala sin que nadie lo pidiera.
+   * Es el tercer participante del canal, junto a personas y agentes.
+   */
+  FEED_EVENT: "feed:event",
 } as const;
 
 export type MsgType = (typeof MSG)[keyof typeof MSG];
@@ -60,13 +65,24 @@ export interface AgentMessageContent {
   text: string;
 }
 
+export interface FeedEventContent {
+  /** Id de la fuente. Sirve para no publicar dos veces el mismo hecho. */
+  eventId: string;
+  source: string;
+  title: string;
+  detail: string;
+  url: string;
+  time: number;
+}
+
 /** Union de todo lo que puede viajar por el canal. */
 export type RoomContent =
   | HumanContent
   | AgentThinkingContent
   | AgentTokenContent
   | AgentToolContent
-  | AgentMessageContent;
+  | AgentMessageContent
+  | FeedEventContent;
 
 /** Metadata de presencia que publica cada cliente. */
 export interface PresenceMeta {
