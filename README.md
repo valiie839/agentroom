@@ -52,6 +52,18 @@ Cuando invocas a un agente, el navegador hace un `POST /api/agent` que **no devu
 | `typing` / `sendActivity` | Indicador de escritura entre personas |
 | Publicación server-side (`sk_`) | Agentes y fuente hablan sin navegador: la sala sigue viva aunque cierres la pestaña |
 
+### La pizarra: estado compartido, no mensajes
+
+Arriba de la sala hay un panel con **lo que sabemos hasta ahora**, que un agente reescribe conforme avanza la conversación y que todos ven cambiar a la vez.
+
+No es un mensaje más. Viaja por el canal como `room:synthesis`, se filtra del hilo, y **cada versión reemplaza a la anterior** en vez de acumularse. Es lo que separa una sala de trabajo de un chat: entrar a mitad de una conversación larga no obliga a leerla entera.
+
+La diferencia entre extraer y destilar se nota. Dado un hilo donde alguien dice que su build tarda 9 minutos y otro agente objeta que nadie ha medido cuánto de eso es compilación real, la pizarra escribe:
+
+> El proyecto de Carlos tarda 9 minutos en compilar, pero no se sabe cuánto tiempo se debe a la compilación real.
+
+Ninguna frase del hilo dice eso: reúne dos mensajes en una conclusión. Conseguirlo exigió el modelo grande — el pequeño copiaba frases literales, que es justo lo que hace inútil una pizarra.
+
 ### Configuración de canal desplegada
 
 [`portal.config.ts`](portal.config.ts) se despliega con `portal deploy` y gobierna todas las salas con una plantilla `room-*` — necesario porque las salas se crean cuando alguien abre la URL, así que sus ids no existen de antemano.
