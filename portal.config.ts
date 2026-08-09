@@ -84,5 +84,23 @@ export default defineConfig({
 
       onPublish: [soloElServidorHablaPorLosAgentes, mensajeHumanoRazonable],
     },
+
+    /**
+     * El canal espejo para la audiencia.
+     *
+     * En modo broadcast la presencia es agregada: se sabe cuantos miran,
+     * no quienes. Es lo correcto para una audiencia -- el roster detallado
+     * de la sala se vuelve ilegible con unas pocas decenas de personas, y
+     * cada entrada y salida se propagaria a todos.
+     *
+     * Nadie publica aqui salvo el servidor, que espeja lo que ocurre en la
+     * sala. Un espectador que intente escribir es rechazado en la conexion,
+     * no en el mensaje.
+     */
+    "watch-*": {
+      mode: "broadcast",
+      anonymous: true,
+      authz: () => allow({ publish: false, sendDirect: false }),
+    },
   },
 });

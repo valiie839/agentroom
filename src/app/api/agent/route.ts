@@ -14,6 +14,8 @@ import type { ChatMessage } from "@/lib/ai";
 import { AGENT_BY_SLUG, type AgentDef } from "@/lib/agents";
 import { pickInterjector, pickResponder } from "@/lib/router";
 import { runAgent } from "@/lib/run-agent";
+import { publishMessage } from "@/lib/portal-server";
+import { MSG, watchChannelIdFor } from "@/lib/room-types";
 
 /** Vercel corta las funciones; el streaming necesita margen. */
 export const maxDuration = 60;
@@ -29,6 +31,13 @@ interface AgentRequest {
    * agente deberia intervenir -- incluida la opcion de que ninguno lo haga.
    */
   auto?: boolean;
+  /**
+   * El mensaje humano que disparo esta llamada. El cliente ya lo publico
+   * en el canal de la sala; aqui se espeja al canal de espectadores, que
+   * el navegador no toca. Sin esto la audiencia veria a los agentes
+   * responder a preguntas que nunca vio.
+   */
+  say?: { text: string; author: string };
 }
 
 export async function POST(request: Request) {
@@ -47,6 +56,17 @@ export async function POST(request: Request) {
 
   const transcript: ChatMessage[] = [...(history ?? [])];
   const runIds: string[] = [];
+
+  // Espejo del mensaje humano hacia la audiencia. No se espera: si falla,
+  // la sala no debe notarlo.
+  if (body.say?.text) {
+    void publishMessage({
+      channelId: watchChannelIdFor(roomId),
+      senderId: "mirror-human",
+      type: MSG.HUMAN,
+      content: { text: body.say.text, author: body.say.author },
+    }).catch(() => {});
+  }
 
   /** Ejecuta un agente y deja su respuesta en el transcript compartido. */
   const speak = async (agent: AgentDef) => {

@@ -346,6 +346,8 @@ export function Room({ roomId, me }: { roomId: string; me: PresenceMeta }) {
             agents: mentioned.map((a) => a.slug),
             history,
             auto: mentioned.length === 0,
+            // Para que el servidor lo espeje al canal de espectadores.
+            say: { text, author: me.name },
           }),
         });
       } finally {
@@ -454,7 +456,16 @@ export function Room({ roomId, me }: { roomId: string; me: PresenceMeta }) {
           <div className="min-w-0">
             <h1 className="truncate text-sm font-medium">#{roomId}</h1>
             <p className="text-xs text-neutral-500">
-              Comparte esta URL para que otra persona entre al mismo room
+              Comparte esta URL para participar, o{" "}
+              <a
+                href={`/watch/${roomId}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-neutral-400 underline underline-offset-2 hover:text-neutral-200"
+              >
+                el enlace de espectador
+              </a>{" "}
+              para que solo miren
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-2">

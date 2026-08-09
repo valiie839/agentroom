@@ -28,6 +28,22 @@ export function channelIdFor(roomId: string): string {
   return `room-${roomId}`;
 }
 
+/**
+ * Canal espejo para espectadores, en modo broadcast.
+ *
+ * Existe porque una sala y una audiencia no son lo mismo. En el canal de
+ * la sala la presencia es detallada -- se ve quien esta, uno por uno --
+ * y eso deja de tener sentido a partir de unas pocas decenas de personas:
+ * el roster se vuelve ilegible y cada entrada y salida se propaga a todos.
+ *
+ * El canal de espectadores usa presencia agregada (solo el numero) y
+ * nadie puede publicar en el. Sirve para mirar, que es justo lo que hace
+ * una audiencia.
+ */
+export function watchChannelIdFor(roomId: string): string {
+  return `watch-${roomId}`;
+}
+
 export const MSG = {
   /** Mensaje de una persona. Persistente, va al historial. */
   HUMAN: "message",

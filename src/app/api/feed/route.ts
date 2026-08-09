@@ -16,11 +16,11 @@
  */
 
 import { resolveSource } from "@/lib/feed";
-import { publishMessage } from "@/lib/portal-server";
+import { publishToRoom } from "@/lib/portal-server";
 import { AGENTS, AGENT_BY_SLUG } from "@/lib/agents";
 import { pickInterjector } from "@/lib/router";
 import { publishToolCall, runAgent } from "@/lib/run-agent";
-import { MSG, channelIdFor } from "@/lib/room-types";
+import { MSG } from "@/lib/room-types";
 
 export const maxDuration = 60;
 
@@ -65,12 +65,9 @@ export async function POST(request: Request) {
     return Response.json({ ok: true, skipped: true });
   }
 
-  const channelId = channelIdFor(roomId);
-
   // 1. El hecho entra a la sala como participante propio, con su fuente
   //    citada. No lo dice un agente: lo dice el mundo.
-  await publishMessage({
-    channelId,
+  await publishToRoom(roomId, {
     senderId: `feed-${source.id}`,
     type: MSG.FEED_EVENT,
     content: {

@@ -8,6 +8,7 @@
  */
 
 import "server-only";
+import { channelIdFor, watchChannelIdFor } from "@/lib/room-types";
 
 const CONTROL_PLANE = "https://api.useportal.co";
 
@@ -71,6 +72,30 @@ export function publishMessage({
     `/v1/channels/${encodeURIComponent(channelId)}/messages`,
     { senderId, content, ...(type && { type }), ...(ephemeral && { ephemeral }) },
   );
+}
+
+/**
+ * Publica en la sala y en su canal de espectadores a la vez.
+ *
+ * Los dos canales existen porque una sala y una audiencia se comportan
+ * distinto: la primera necesita saber quien esta, la segunda solo cuantos
+ * miran. Espejar cuesta una publicacion extra, y a cambio la audiencia
+ * puede crecer sin degradar la sala.
+ *
+ * El espejo nunca tumba la publicacion real: si falla, la sala sigue.
+ */
+export async function publishToRoom(
+  roomId: string,
+  input: Omit<PublishInput, "channelId">,
+): Promise<PublishResult> {
+  const [result] = await Promise.all([
+    publishMessage({ ...input, channelId: channelIdFor(roomId) }),
+    publishMessage({
+      ...input,
+      channelId: watchChannelIdFor(roomId),
+    }).catch(() => undefined),
+  ]);
+  return result;
 }
 
 /**

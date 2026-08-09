@@ -13,8 +13,8 @@
  */
 
 import { completeFast, type ChatMessage } from "@/lib/ai";
-import { publishMessage } from "@/lib/portal-server";
-import { MSG, channelIdFor, type SynthesisContent } from "@/lib/room-types";
+import { publishToRoom } from "@/lib/portal-server";
+import { MSG, type SynthesisContent } from "@/lib/room-types";
 
 export const maxDuration = 30;
 
@@ -89,8 +89,7 @@ Responde SOLO con JSON valido, sin texto alrededor ni bloques de codigo.`,
     coverage: history.length,
   };
 
-  await publishMessage({
-    channelId: channelIdFor(roomId),
+  await publishToRoom(roomId, {
     senderId: "agent-nova",
     type: MSG.SYNTHESIS,
     content: content as unknown as Record<string, unknown>,
