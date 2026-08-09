@@ -52,6 +52,24 @@ Cuando invocas a un agente, el navegador hace un `POST /api/agent` que **no devu
 | `typing` / `sendActivity` | Indicador de escritura entre personas |
 | Publicación server-side (`sk_`) | Agentes y fuente hablan sin navegador: la sala sigue viva aunque cierres la pestaña |
 
+### Configuración de canal desplegada
+
+[`portal.config.ts`](portal.config.ts) se despliega con `portal deploy` y gobierna todas las salas con una plantilla `room-*` — necesario porque las salas se crean cuando alguien abre la URL, así que sus ids no existen de antemano.
+
+Lo que hace, y por qué:
+
+**`authz`** concede `publish` y niega `sendDirect`. Los mensajes dirigidos no encajan en la premisa: en esta sala, todo lo que pasa lo ve la sala entera.
+
+**Middleware `onPublish` que impide suplantar a un agente.** La clave publicable está a la vista de cualquiera que abra las herramientas de desarrollo. Sin esta comprobación, alguien podría publicar un `agent:message` firmado como `agent-nova` y poner palabras en boca de un agente — indistinguible de una respuesta real para el resto de la sala. La frontera es el emisor: agentes y fuente publican desde el servidor con la clave secreta y llevan ids reservados (`agent-*`, `feed-*`), que una sesión de navegador nunca puede tener.
+
+**Middleware que rechaza mensajes humanos vacíos o de más de 2.000 caracteres**, para que una burbuja vacía no ensucie el historial de todos.
+
+### Resistencia ante el límite de tasa
+
+El plan gratuito de Groq da 12.000 tokens por minuto **por modelo**, y una ráfaga de tres agentes deliberando lo roza. Un 429 en mitad de una demo se ve como un producto roto.
+
+Las llamadas reintentan respetando `retry-after`, y si el modelo grande sigue saturado, el turno se sirve con `llama-3.1-8b-instant`. La respuesta es algo peor; en una sala en vivo, el silencio es el peor resultado posible.
+
 ### Dos caminos que no funcionaron
 
 Vale la pena dejarlos escritos, por si le ahorran tiempo a alguien.
