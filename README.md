@@ -52,6 +52,16 @@ Cuando invocas a un agente, el navegador hace un `POST /api/agent` que **no devu
 | `typing` / `sendActivity` | Indicador de escritura entre personas |
 | Publicación server-side (`sk_`) | Agentes y fuente hablan sin navegador: la sala sigue viva aunque cierres la pestaña |
 
+### Dos modos de canal: sala y audiencia
+
+Una sala y una audiencia no se comportan igual, y Portal tiene un modo para cada una.
+
+La sala (`room-*`) es **standard**: presencia detallada, se ve quién está uno por uno. Eso deja de tener sentido pasadas unas decenas de personas — el roster se vuelve ilegible y cada entrada y salida se propaga a todos.
+
+El espejo (`watch-*`) es **broadcast**: presencia agregada, solo el número de espectadores, y publicación denegada en la propia autorización. `/watch/[sala]` no tiene caja de texto: mirar y participar son cosas distintas.
+
+Todo lo que publica el servidor va a los dos canales. El mensaje humano lo espeja `/api/agent`, porque el navegador publica directo en la sala y nunca toca el canal de espectadores. Cuesta una publicación extra por evento; a cambio la audiencia puede crecer sin degradar la sala.
+
 ### La pizarra: estado compartido, no mensajes
 
 Arriba de la sala hay un panel con **lo que sabemos hasta ahora**, que un agente reescribe conforme avanza la conversación y que todos ven cambiar a la vez.
