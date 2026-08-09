@@ -213,6 +213,10 @@ async function* streamGemini(
         generationConfig: {
           temperature: options.temperature ?? 0.7,
           maxOutputTokens: options.maxTokens ?? 500,
+          // Gemini 2.5 gasta tokens "pensando" antes de responder y se comia
+          // el presupuesto entero: la respuesta llegaba vacia con MAX_TOKENS.
+          // Aqui no hace falta razonar en silencio, hace falta conversar.
+          thinkingConfig: { thinkingBudget: 0 },
         },
       }),
       signal: options.signal,
@@ -296,7 +300,7 @@ export async function completeFast(
           ...(system.length > 0 && {
             systemInstruction: { parts: system.map((m) => ({ text: m.content })) },
           }),
-          generationConfig: { temperature: 0, maxOutputTokens: maxTokens },
+          generationConfig: { temperature: 0, maxOutputTokens: maxTokens , thinkingConfig: { thinkingBudget: 0 } },
         }),
       },
     );

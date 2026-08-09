@@ -1,22 +1,21 @@
 /**
  * POST /api/feed
  *
- * Trae la fuente en vivo a la sala. El cliente manda los ids de eventos
- * que ya vio; el servidor consulta la fuente, publica el mas reciente que
- * sea nuevo, y hace que un agente lo comente.
+ * Trae la fuente en vivo a la sala. El cliente manda que fuente mira y
+ * los ids que ya vio; el servidor consulta, publica el hecho mas reciente
+ * que sea nuevo, y hace que un agente lo comente.
  *
- * El resultado en pantalla es que la sala se mueve sola: aparece un hecho
- * del mundo real y alguien opina sobre el, sin que nadie haya escrito
- * nada. Es la diferencia entre un chat con IA y una sala donde esta
- * pasando algo.
+ * El resultado en pantalla es que la sala se mueve sola: aparece algo del
+ * mundo real y alguien opina sobre ello, sin que nadie haya escrito nada.
+ * Es la diferencia entre un chat con IA y una sala donde esta pasando algo.
  *
- * Por que el cliente lleva la iniciativa: en serverless no hay proceso
- * que vigile un feed de forma continua, y el cron de Vercel en plan
- * gratuito no baja del dia. Que sondee quien esta mirando es ademas lo
- * razonable -- si no hay nadie en la sala, no hay nada que anunciar.
+ * Por que el cliente lleva la iniciativa: en serverless no hay proceso que
+ * vigile un feed de forma continua, y el cron de Vercel en plan gratuito
+ * no baja del dia. Que sondee quien esta mirando es ademas lo razonable --
+ * si no hay nadie en la sala, no hay nada que anunciar.
  */
 
-import { describeEvent, fetchLatestEvents } from "@/lib/feed";
+import { resolveSource } from "@/lib/feed";
 import { publishMessage } from "@/lib/portal-server";
 import { AGENTS, AGENT_BY_SLUG } from "@/lib/agents";
 import { publishToolCall, runAgent } from "@/lib/run-agent";
@@ -24,12 +23,14 @@ import { MSG, channelIdFor } from "@/lib/room-types";
 
 export const maxDuration = 60;
 
-/** Quien comenta los eventos de la fuente. Es su rol: leer los datos. */
+/** Quien comenta los hechos de la fuente. Es su rol: leer los datos. */
 const ANALYST = AGENT_BY_SLUG.get("nova") ?? AGENTS[0];
 
 interface FeedRequest {
   roomId: string;
-  /** Ids de eventos ya presentes en la sala, para no repetirlos. */
+  /** Que fuente mira esta sala. */
+  source?: string;
+  /** Ids de hechos ya presentes en la sala, para no repetirlos. */
   knownIds?: string[];
 }
 
@@ -46,9 +47,11 @@ export async function POST(request: Request) {
     return Response.json({ error: "Falta roomId" }, { status: 400 });
   }
 
+  const source = resolveSource(body.source);
+
   let events;
   try {
-    events = await fetchLatestEvents();
+    events = await source.fetchLatest(5);
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
     return Response.json({ ok: false, error: detail }, { status: 502 });
@@ -61,17 +64,19 @@ export async function POST(request: Request) {
     return Response.json({ ok: true, skipped: true });
   }
 
+  const channelId = channelIdFor(roomId);
+
   // 1. El hecho entra a la sala como participante propio, con su fuente
   //    citada. No lo dice un agente: lo dice el mundo.
   await publishMessage({
-    channelId: channelIdFor(roomId),
-    senderId: "feed-usgs",
+    channelId,
+    senderId: `feed-${source.id}`,
     type: MSG.FEED_EVENT,
     content: {
       eventId: fresh.id,
-      source: "USGS",
-      title: fresh.title,
-      detail: describeEvent(fresh),
+      source: source.attribution,
+      title: fresh.detail,
+      detail: fresh.detail,
       url: fresh.url,
       time: fresh.time,
     },
@@ -82,20 +87,20 @@ export async function POST(request: Request) {
   await publishToolCall(
     roomId,
     ANALYST,
-    "usgs.sismos_ultima_hora",
-    `${events.length} ${events.length === 1 ? "evento" : "eventos"} sobre magnitud 2.5; el más reciente en ${fresh.place}`,
+    `${source.id}.ultimos_eventos`,
+    `${events.length} ${events.length === 1 ? "hecho" : "hechos"} recientes de ${source.attribution}`,
   ).catch(() => {});
 
   // 3. Y alguien lo comenta.
   const { runId } = await runAgent(roomId, ANALYST, [
     {
       role: "user",
-      content: `Acaba de entrar este dato a la sala desde el feed sismico del USGS:
+      content: `Acaba de entrar este hecho a la sala desde ${source.attribution} (${source.kind}):
 
-${describeEvent(fresh)}
+${fresh.detail}
 
 Comentalo en una o dos frases: que implica y si merece atencion. No
-saludes, no repitas el dato tal cual, no inventes cifras que no esten
+saludes, no repitas el hecho tal cual, no inventes datos que no esten
 arriba.`,
     },
   ]);

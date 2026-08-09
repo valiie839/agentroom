@@ -17,6 +17,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useChannel } from "@portalsdk/react";
 import { AGENTS, AGENT_BY_SLUG, parseMentions } from "@/lib/agents";
+import { DEFAULT_SOURCE, SOURCE_LIST, type SourceId } from "@/lib/feed";
 import {
   MSG,
   channelIdFor,
@@ -58,8 +59,14 @@ export function Room({ roomId, me }: { roomId: string; me: PresenceMeta }) {
   const [busy, setBusy] = useState(false);
   /** Con la sala viva, los agentes deciden solos cuando intervenir. */
   const [liveRoom, setLiveRoom] = useState(true);
-  /** Con la fuente conectada, la sala recibe hechos del mundo real. */
-  const [liveFeed, setLiveFeed] = useState(true);
+  /**
+   * Que fuente del mundo real escucha la sala. "off" la desconecta.
+   * Cambiarla en vivo es parte de la demostracion: la misma sala puede
+   * estar mirando sismos, Wikipedia o Hacker News.
+   */
+  const [feedSource, setFeedSource] = useState<SourceId | "off">(
+    DEFAULT_SOURCE,
+  );
   const scrollRef = useRef<HTMLDivElement>(null);
   /**
    * Bolso completo de metadata de presencia. Portal reemplaza el bag entero
@@ -162,7 +169,7 @@ export function Room({ roomId, me }: { roomId: string; me: PresenceMeta }) {
   );
 
   useEffect(() => {
-    if (!isFeedDriver || !liveFeed || status !== "ready") return;
+    if (!isFeedDriver || feedSource === "off" || status !== "ready") return;
 
     let cancelled = false;
     const check = async () => {
@@ -171,7 +178,11 @@ export function Room({ roomId, me }: { roomId: string; me: PresenceMeta }) {
         await fetch("/api/feed", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ roomId, knownIds: knownEventIdsRef.current }),
+          body: JSON.stringify({
+            roomId,
+            source: feedSource,
+            knownIds: knownEventIdsRef.current,
+          }),
         });
       } catch {
         // La sala no depende del feed: si falla, se reintenta al siguiente.
@@ -190,7 +201,7 @@ export function Room({ roomId, me }: { roomId: string; me: PresenceMeta }) {
       clearTimeout(first);
       clearInterval(id);
     };
-  }, [isFeedDriver, liveFeed, roomId, status]);
+  }, [isFeedDriver, feedSource, roomId, status]);
 
   // Los ids viajan por ref para que actualizarlos no reinicie el intervalo.
   const knownEventIdsRef = useRef<string[]>([]);
@@ -399,21 +410,31 @@ export function Room({ roomId, me }: { roomId: string; me: PresenceMeta }) {
             >
               {liveRoom ? "● sala viva" : "○ solo menciones"}
             </button>
-            <button
-              onClick={() => setLiveFeed((v) => !v)}
-              title={
-                liveFeed
-                  ? "La sala recibe sismos del USGS conforme ocurren"
-                  : "Fuente en vivo desconectada"
+            <select
+              value={feedSource}
+              onChange={(e) =>
+                setFeedSource(e.target.value as SourceId | "off")
               }
-              className={`rounded-full border px-2.5 py-0.5 text-[11px] transition ${
-                liveFeed
-                  ? "border-orange-400/40 bg-orange-400/10 text-orange-300"
-                  : "border-white/15 text-neutral-500"
+              title="Que parte del mundo real escucha esta sala"
+              className={`rounded-full border bg-transparent px-2 py-0.5 text-[11px] outline-none transition ${
+                feedSource === "off"
+                  ? "border-white/15 text-neutral-500"
+                  : "border-orange-400/40 bg-orange-400/10 text-orange-300"
               }`}
             >
-              {liveFeed ? "● feed USGS" : "○ sin feed"}
-            </button>
+              <option value="off" className="bg-neutral-900 text-neutral-300">
+                ○ sin fuente
+              </option>
+              {SOURCE_LIST.map((s) => (
+                <option
+                  key={s.id}
+                  value={s.id}
+                  className="bg-neutral-900 text-neutral-300"
+                >
+                  ● {s.label}
+                </option>
+              ))}
+            </select>
             <span
               className={`rounded-full px-2 py-0.5 text-[11px] ${
                 status === "ready"
