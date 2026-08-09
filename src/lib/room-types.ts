@@ -44,12 +44,20 @@ export const MSG = {
    * Es el tercer participante del canal, junto a personas y agentes.
    */
   FEED_EVENT: "feed:event",
+  /**
+   * Estado compartido de la sala, no un mensaje: la version vigente de
+   * "lo que sabemos hasta ahora". Cada nueva version reemplaza a la
+   * anterior en pantalla en vez de acumularse en el hilo.
+   */
+  SYNTHESIS: "room:synthesis",
 } as const;
 
 export type MsgType = (typeof MSG)[keyof typeof MSG];
 
 /** Tipos que NO deben renderizarse como burbujas del historial. */
 export const TRANSIENT_TYPES: string[] = [
+  // La sintesis se pinta en su panel fijo, no como burbuja del hilo.
+  MSG.SYNTHESIS,
   MSG.AGENT_THINKING,
   MSG.AGENT_TOKEN,
 ];
@@ -86,6 +94,15 @@ export interface AgentMessageContent {
   text: string;
 }
 
+export interface SynthesisContent {
+  /** Frases sueltas: los puntos que la sala da por establecidos. */
+  points: string[];
+  /** Lo que sigue abierto, si algo lo esta. */
+  open?: string;
+  /** Cuantos mensajes de la sala se han tenido en cuenta. */
+  coverage: number;
+}
+
 export interface FeedEventContent {
   /** Id de la fuente. Sirve para no publicar dos veces el mismo hecho. */
   eventId: string;
@@ -103,7 +120,8 @@ export type RoomContent =
   | AgentTokenContent
   | AgentToolContent
   | AgentMessageContent
-  | FeedEventContent;
+  | FeedEventContent
+  | SynthesisContent;
 
 /**
  * Metadata de presencia que publica cada cliente.

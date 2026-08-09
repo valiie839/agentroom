@@ -29,6 +29,7 @@ import {
   type AgentTokenContent,
   type AgentToolContent,
   type FeedEventContent,
+  type SynthesisContent,
   type HumanContent,
   type PresenceMeta,
   type RoomContent,
@@ -158,6 +159,68 @@ export function Room({ roomId, me }: { roomId: string; me: PresenceMeta }) {
     const ids = presence.participants.map((p) => p.id).sort();
     return ids[0] === identity.id;
   }, [presence, identity]);
+
+  /**
+   * La pizarra vigente. Se lee de `messages` y no de `visible` porque la
+   * sintesis esta filtrada del hilo: vive en su panel, no como burbuja.
+   * Cada version reemplaza a la anterior, asi que solo importa la ultima.
+   */
+  const synthesis = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].type === MSG.SYNTHESIS) {
+        return messages[i].content as SynthesisContent;
+      }
+    }
+    return undefined;
+  }, [messages]);
+
+  /** Historial aplanado, tal y como lo consumen los agentes. */
+  const buildHistory = useCallback(
+    () =>
+      visible.slice(-16).map((m) => {
+        if (m.type === MSG.AGENT_MESSAGE) {
+          const c = m.content as AgentMessageContent;
+          const agent = AGENT_BY_SLUG.get(c.agentSlug);
+          return {
+            role: "user" as const,
+            content: `${agent?.name ?? c.agentSlug} (${agent?.role ?? "agente"}) respondio: ${c.text}`,
+          };
+        }
+        if (m.type === MSG.FEED_EVENT) {
+          const c = m.content as FeedEventContent;
+          return {
+            role: "user" as const,
+            content: `[${c.source}] ${c.detail}`,
+          };
+        }
+        const c = m.content as HumanContent;
+        return { role: "user" as const, content: `${c.author}: ${c.text}` };
+      }),
+    [visible],
+  );
+
+  // La pizarra se reescribe cuando la conversacion ha avanzado lo bastante
+  // como para que valga la pena, no en cada mensaje. Lo dispara el mismo
+  // cliente que sondea la fuente, por la misma razon: uno solo.
+  useEffect(() => {
+    const covered = synthesis?.coverage ?? 0;
+    if (!isFeedDriver || status !== "ready") return;
+    if (visible.length < 3 || visible.length - covered < 3) return;
+
+    // Espera a que amaine: si estan llegando mensajes, se destila al final
+    // de la rafaga y no a mitad.
+    const id = setTimeout(() => {
+      void fetch("/api/synthesis", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ roomId, history: buildHistory() }),
+      }).catch(() => {
+        // La sala funciona igual sin pizarra: se reintenta al siguiente.
+      });
+    }, 4_000);
+
+    return () => clearTimeout(id);
+  }, [visible.length, synthesis, isFeedDriver, status, roomId, buildHistory]);
 
   /** Eventos de la fuente ya presentes, para no repetirlos. */
   const knownEventIds = useMemo(
@@ -447,6 +510,8 @@ export function Room({ roomId, me }: { roomId: string; me: PresenceMeta }) {
           </div>
         </header>
 
+        {synthesis && <Blackboard synthesis={synthesis} />}
+
         <div className="relative min-h-0 flex-1">
           <div ref={scrollRef} className="h-full space-y-3 overflow-y-auto p-4">
           {visible.length === 0 && (
@@ -544,6 +609,40 @@ export function Room({ roomId, me }: { roomId: string; me: PresenceMeta }) {
           </div>
         </div>
       </section>
+    </div>
+  );
+}
+
+/**
+ * La pizarra de la sala: lo que la conversacion ha dejado en claro.
+ *
+ * No es un mensaje, es estado compartido. Se queda fija arriba y cada
+ * version reemplaza a la anterior, de modo que quien entra a mitad de una
+ * conversacion larga no tiene que leerla entera.
+ */
+function Blackboard({ synthesis }: { synthesis: SynthesisContent }) {
+  return (
+    <div className="border-b border-white/10 bg-white/[0.03] px-4 py-3">
+      <p className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-neutral-500">
+        <span className="inline-block h-1.5 w-1.5 rounded-full bg-indigo-400" />
+        Lo que sabemos hasta ahora
+        <span className="font-normal normal-case tracking-normal text-neutral-600">
+          · destilado de {synthesis.coverage} mensajes
+        </span>
+      </p>
+      <ul className="space-y-0.5">
+        {synthesis.points.map((p, i) => (
+          <li key={i} className="flex gap-2 text-sm text-neutral-300">
+            <span className="select-none text-neutral-600">—</span>
+            <span>{p}</span>
+          </li>
+        ))}
+      </ul>
+      {synthesis.open && (
+        <p className="mt-1.5 text-xs text-amber-300/70">
+          Abierto: {synthesis.open}
+        </p>
+      )}
     </div>
   );
 }

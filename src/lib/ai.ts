@@ -278,14 +278,22 @@ const FAST_MODELS: Record<Provider, string> = {
 export async function completeFast(
   messages: ChatMessage[],
   maxTokens = 12,
+  /**
+   * Usa el modelo grande en lugar del pequeño. Para enrutar basta el
+   * pequeño -- son dos palabras -- pero para destilar una conversacion no:
+   * el 8B extraia frases literales del hilo en vez de reunirlas en una
+   * conclusion, que es justo lo que hace inutil una pizarra.
+   */
+  useMainModel = false,
 ): Promise<string> {
   const provider = resolveProvider();
+  const models = useMainModel ? DEFAULT_MODELS : FAST_MODELS;
 
   if (provider === "gemini") {
     const system = messages.filter((m) => m.role === "system");
     const turns = messages.filter((m) => m.role !== "system");
     const res = await fetchWithRetry(
-      `https://generativelanguage.googleapis.com/v1beta/models/${FAST_MODELS.gemini}:generateContent`,
+      `https://generativelanguage.googleapis.com/v1beta/models/${models.gemini}:generateContent`,
       {
         method: "POST",
         headers: {
@@ -309,19 +317,29 @@ export async function completeFast(
     return data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? "";
   }
 
-  const res = await fetchWithRetry("https://api.groq.com/openai/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${requireKey("GROQ_API_KEY")}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: FAST_MODELS.groq,
-      messages,
-      temperature: 0,
-      max_tokens: maxTokens,
-    }),
-  });
+  const call = (model: string) =>
+    fetchWithRetry("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${requireKey("GROQ_API_KEY")}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model,
+        messages,
+        temperature: 0,
+        max_tokens: maxTokens,
+      }),
+    });
+
+  let res = await call(models.groq);
+
+  // Misma degradacion que en el streaming: los limites son por modelo, asi
+  // que ante saturacion se sirve con el pequeño en vez de fallar.
+  if (res.status === 429 && models.groq !== FAST_MODELS.groq) {
+    res = await call(FAST_MODELS.groq);
+  }
+
   if (!res.ok) throw new Error(`Groq respondio ${res.status}`);
   const data = (await res.json()) as {
     choices?: Array<{ message?: { content?: string } }>;
