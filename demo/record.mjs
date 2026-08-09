@@ -22,8 +22,8 @@ const BASE = process.env.DEMO_BASE ?? "https://agentroom.vercel.app";
 const SALA = process.env.DEMO_ROOM ?? `demo-${Date.now().toString(36)}`;
 const SALIDA = "salida";
 
-const ANCHO = 1280;
-const ALTO = 720;
+const ANCHO = 1920;
+const ALTO = 1080;
 
 /** Barra de subtitulos + dos salas. El texto lo mueve el guion. */
 const ENVOLTORIO = `
@@ -32,16 +32,16 @@ const ENVOLTORIO = `
   * { box-sizing: border-box; }
   body { margin:0; background:#0a0a0a; font-family: system-ui, sans-serif;
          width:${ANCHO}px; height:${ALTO}px; overflow:hidden; }
-  #escena { display:flex; height:${ALTO - 96}px; }
+  #escena { display:flex; height:${ALTO - 130}px; }
   iframe { border:0; width:100%; height:100%; background:#0a0a0a; }
-  .panel { flex:1; border-right:1px solid rgba(255,255,255,.08); position:relative; }
+  .panel { flex:1; display:flex; flex-direction:column; border-right:1px solid rgba(255,255,255,.08); }
   .panel:last-child { border-right:0; }
-  .etiqueta { position:absolute; top:8px; left:8px; z-index:5;
-    background:rgba(0,0,0,.6); color:#a3a3a3; font-size:11px;
-    padding:2px 8px; border-radius:999px; letter-spacing:.04em; }
-  #barra { height:96px; display:flex; align-items:center; padding:0 28px;
+  .etiqueta { flex:0 0 auto; background:#141414; color:#a3a3a3; font-size:15px;
+    padding:7px 16px; letter-spacing:.06em; text-transform:uppercase;
+    border-bottom:1px solid rgba(255,255,255,.08); }
+  #barra { height:130px; display:flex; align-items:center; padding:0 28px;
     background:linear-gradient(180deg,#111,#0a0a0a); border-top:1px solid rgba(255,255,255,.08); }
-  #texto { color:#f5f5f5; font-size:23px; line-height:1.35; font-weight:500;
+  #texto { color:#f5f5f5; font-size:32px; line-height:1.35; font-weight:500;
     opacity:0; transform:translateY(6px); transition:opacity .35s, transform .35s; }
   #texto.on { opacity:1; transform:none; }
   #texto b { color:#818cf8; }
@@ -58,6 +58,20 @@ const ENVOLTORIO = `
 </script>`;
 
 const esperar = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Escribir dentro de un iframe desplaza su documento y la barra lateral
+ * se sale de cuadro. Se devuelve arriba para que la sala siempre se vea
+ * entera.
+ */
+async function recolocar(...marcos) {
+  for (const m of marcos) {
+    await m
+      .locator("body")
+      .evaluate(() => window.scrollTo(0, 0))
+      .catch(() => {});
+  }
+}
 
 /** Marca de tiempo relativa, para cuadrar despues la narracion. */
 let t0 = 0;
@@ -160,7 +174,9 @@ async function main() {
   await caja.click();
   await caja.type("¿esto deberia preocuparnos?", { delay: 55 });
   await salaA.locator('button:has-text("Enviar")').click();
-  await esperar(20000);
+  await esperar(3000);
+  await recolocar(salaA, salaB);
+  await esperar(17000);
 
   // --- 5. Y sabe callarse -----------------------------------------
   paso("saludo trivial");
@@ -170,7 +186,9 @@ async function main() {
   await caja.click();
   await caja.type("hola", { delay: 90 });
   await salaA.locator('button:has-text("Enviar")').click();
-  await esperar(9000);
+  await esperar(2000);
+  await recolocar(salaA, salaB);
+  await esperar(7000);
 
   // --- 6. La pizarra ----------------------------------------------
   paso("pizarra");
@@ -184,6 +202,7 @@ async function main() {
     .first()
     .waitFor({ timeout: 30000 })
     .catch(() => paso("(la pizarra no llego a tiempo)"));
+  await recolocar(salaA, salaB);
   await esperar(7000);
 
   // --- 7. La audiencia --------------------------------------------
