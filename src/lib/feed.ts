@@ -108,8 +108,12 @@ async function load(
 
 /** Redaccion compacta del evento para el prompt de los agentes. */
 export function describeEvent(event: FeedEvent): string {
+  // El USGS entrega la magnitud con toda su precision de calculo
+  // (2.57421660423279); a un lector solo le sirve una decimal.
   const magnitude =
-    event.magnitude === null ? "magnitud desconocida" : `magnitud ${event.magnitude}`;
+    event.magnitude === null
+      ? "magnitud desconocida"
+      : `magnitud ${event.magnitude.toFixed(1)}`;
   const when = new Date(event.time).toISOString().slice(11, 16);
   return `Sismo de ${magnitude} en ${event.place}, registrado a las ${when} UTC.`;
 }
