@@ -20,6 +20,17 @@ export function RoomGate({ roomId }: { roomId: string }) {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
+    // Un ?name= en la URL entra directo, sin preguntar y sin tocar lo
+    // guardado. Sirve para compartir un enlace ya con nombre, y permite
+    // tener dos salas con identidades distintas en una misma pantalla
+    // (dos iframes comparten el localStorage del navegador, no la URL).
+    const fromUrl = new URLSearchParams(window.location.search).get("name");
+    if (fromUrl?.trim()) {
+      setMe({ name: fromUrl.trim().slice(0, 24) });
+      setReady(true);
+      return;
+    }
+
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
       try {
