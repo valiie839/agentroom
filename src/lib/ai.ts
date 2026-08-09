@@ -54,6 +54,42 @@ function requireKey(name: string): string {
 }
 
 /**
+ * Peticion con reintento ante limite de tasa.
+ *
+ * El plan gratuito de Groq permite 12.000 tokens por minuto. Tres agentes
+ * deliberando mas un evento de la fuente pueden rozarlo en una rafaga, y
+ * un 429 en mitad de una demo en vivo se ve como si el producto estuviera
+ * roto. La espera que indica el proveedor suele ser de segundos, asi que
+ * sale mucho mas barato aguantar que fallar.
+ */
+async function fetchWithRetry(
+  url: string,
+  init: RequestInit,
+  attempts = 3,
+): Promise<Response> {
+  let last: Response | undefined;
+
+  for (let i = 0; i < attempts; i++) {
+    const res = await fetch(url, init);
+    if (res.status !== 429) return res;
+
+    last = res;
+    if (i === attempts - 1) break;
+
+    // El proveedor dice cuanto esperar; si no lo dice, se sube la espera
+    // progresivamente. Se acota para no agotar el presupuesto de la funcion.
+    const hinted = Number(res.headers.get("retry-after"));
+    const waitMs = Number.isFinite(hinted) && hinted > 0
+      ? Math.min(hinted * 1000, 8_000)
+      : 1_000 * (i + 1);
+
+    await new Promise((r) => setTimeout(r, waitMs));
+  }
+
+  return last!;
+}
+
+/**
  * Parsea un stream SSE y va emitiendo el campo `data:` de cada evento.
  * Groq y Gemini usan ambos SSE, asi que este lector sirve para los dos.
  */
@@ -93,7 +129,7 @@ async function* streamGroq(
   messages: ChatMessage[],
   options: StreamOptions,
 ): AsyncGenerator<string> {
-  const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+  const res = await fetchWithRetry("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${requireKey("GROQ_API_KEY")}`,
@@ -103,7 +139,7 @@ async function* streamGroq(
       model: options.model ?? DEFAULT_MODELS.groq,
       messages,
       temperature: options.temperature ?? 0.7,
-      max_tokens: options.maxTokens ?? 1024,
+      max_tokens: options.maxTokens ?? 500,
       stream: true,
     }),
     signal: options.signal,
@@ -136,7 +172,7 @@ async function* streamGemini(
   const system = messages.filter((m) => m.role === "system");
   const turns = messages.filter((m) => m.role !== "system");
 
-  const res = await fetch(
+  const res = await fetchWithRetry(
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse`,
     {
       method: "POST",
@@ -156,7 +192,7 @@ async function* streamGemini(
         }),
         generationConfig: {
           temperature: options.temperature ?? 0.7,
-          maxOutputTokens: options.maxTokens ?? 1024,
+          maxOutputTokens: options.maxTokens ?? 500,
         },
       }),
       signal: options.signal,
@@ -224,7 +260,7 @@ export async function completeFast(
   if (provider === "gemini") {
     const system = messages.filter((m) => m.role === "system");
     const turns = messages.filter((m) => m.role !== "system");
-    const res = await fetch(
+    const res = await fetchWithRetry(
       `https://generativelanguage.googleapis.com/v1beta/models/${FAST_MODELS.gemini}:generateContent`,
       {
         method: "POST",
@@ -249,7 +285,7 @@ export async function completeFast(
     return data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? "";
   }
 
-  const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+  const res = await fetchWithRetry("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${requireKey("GROQ_API_KEY")}`,

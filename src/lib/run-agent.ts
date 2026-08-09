@@ -14,7 +14,7 @@ import "server-only";
 import { streamChat, type ChatMessage } from "@/lib/ai";
 import { publishMessage } from "@/lib/portal-server";
 import type { AgentDef } from "@/lib/agents";
-import { MSG } from "@/lib/room-types";
+import { MSG, channelIdFor } from "@/lib/room-types";
 
 /** Cada cuanto se vacia el buffer de tokens hacia Portal. */
 const FLUSH_INTERVAL_MS = 120;
@@ -32,10 +32,11 @@ export async function runAgent(
   agent: AgentDef,
   transcript: ChatMessage[],
 ): Promise<AgentTurn> {
+  const channelId = channelIdFor(roomId);
   const runId = crypto.randomUUID();
 
   await publishMessage({
-    channelId: roomId,
+    channelId,
     senderId: agent.senderId,
     type: MSG.AGENT_THINKING,
     content: { runId, agentSlug: agent.slug },
@@ -62,7 +63,7 @@ export async function runAgent(
     lastFlush = Date.now();
     queue = queue.then(() =>
       publishMessage({
-        channelId: roomId,
+        channelId,
         senderId: agent.senderId,
         type: MSG.AGENT_TOKEN,
         content: { runId, agentSlug: agent.slug, delta },
@@ -109,7 +110,7 @@ export async function runAgent(
       : "[me quede sin nada que decir]");
 
   await publishMessage({
-    channelId: roomId,
+    channelId,
     senderId: agent.senderId,
     type: MSG.AGENT_MESSAGE,
     content: { runId, agentSlug: agent.slug, text },
@@ -133,7 +134,7 @@ export function publishToolCall(
   status: "running" | "done" | "error" = "done",
 ) {
   return publishMessage({
-    channelId: roomId,
+    channelId: channelIdFor(roomId),
     senderId: agent.senderId,
     type: MSG.AGENT_TOOL,
     content: { runId: crypto.randomUUID(), agentSlug: agent.slug, tool, status, detail },

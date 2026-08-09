@@ -20,7 +20,7 @@ import { describeEvent, fetchLatestEvents } from "@/lib/feed";
 import { publishMessage } from "@/lib/portal-server";
 import { AGENTS, AGENT_BY_SLUG } from "@/lib/agents";
 import { publishToolCall, runAgent } from "@/lib/run-agent";
-import { MSG } from "@/lib/room-types";
+import { MSG, channelIdFor } from "@/lib/room-types";
 
 export const maxDuration = 60;
 
@@ -64,7 +64,7 @@ export async function POST(request: Request) {
   // 1. El hecho entra a la sala como participante propio, con su fuente
   //    citada. No lo dice un agente: lo dice el mundo.
   await publishMessage({
-    channelId: roomId,
+    channelId: channelIdFor(roomId),
     senderId: "feed-usgs",
     type: MSG.FEED_EVENT,
     content: {

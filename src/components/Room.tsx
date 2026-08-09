@@ -19,6 +19,7 @@ import { useChannel } from "@portalsdk/react";
 import { AGENTS, AGENT_BY_SLUG, parseMentions } from "@/lib/agents";
 import {
   MSG,
+  channelIdFor,
   TRANSIENT_TYPES,
   type AgentMessageContent,
   type AgentThinkingContent,
@@ -77,7 +78,7 @@ export function Room({ roomId, me }: { roomId: string; me: PresenceMeta }) {
     status,
     me: identity,
   } = useChannel<RoomContent>({
-    channelId: roomId,
+    channelId: channelIdFor(roomId),
     metadata: me as unknown as Record<string, unknown>,
     history: 80,
     onMessage: (msg) => {

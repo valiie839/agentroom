@@ -7,6 +7,17 @@
  * entre el agente (servidor) y la UI (cliente).
  */
 
+/**
+ * Id del canal de Portal para una sala.
+ *
+ * El prefijo no es decorativo: permite que `portal.config.ts` gobierne
+ * todas las salas con una sola plantilla `"room-*"`, en vez de tener que
+ * enumerar ids que se crean sobre la marcha.
+ */
+export function channelIdFor(roomId: string): string {
+  return `room-${roomId}`;
+}
+
 export const MSG = {
   /** Mensaje de una persona. Persistente, va al historial. */
   HUMAN: "message",
