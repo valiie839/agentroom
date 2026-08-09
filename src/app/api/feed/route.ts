@@ -24,8 +24,23 @@ import { MSG } from "@/lib/room-types";
 
 export const maxDuration = 60;
 
-/** Quien comenta los hechos de la fuente. Es su rol: leer los datos. */
-const ANALYST = AGENT_BY_SLUG.get("nova") ?? AGENTS[0];
+/**
+ * Quien abre el comentario de un hecho, rotando por el id del evento.
+ *
+ * Antes abria siempre Nova, y como solo hay una interrupcion por hecho,
+ * el tercer agente no llegaba a hablar nunca: competia con el segundo y
+ * perdia. Rotando, los tres tienen turno de apertura.
+ *
+ * Se deriva del id en vez de al azar para que un mismo hecho siempre lo
+ * comente el mismo agente, aunque dos clientes lo pidan a la vez.
+ */
+function openerFor(eventId: string) {
+  let hash = 0;
+  for (let i = 0; i < eventId.length; i++) {
+    hash = (hash * 31 + eventId.charCodeAt(i)) >>> 0;
+  }
+  return AGENTS[hash % AGENTS.length] ?? AGENT_BY_SLUG.get("nova") ?? AGENTS[0];
+}
 
 interface FeedRequest {
   roomId: string;
@@ -80,13 +95,17 @@ export async function POST(request: Request) {
     },
   });
 
+  const ANALYST = openerFor(fresh.id);
+
   // 2. La consulta que trajo el dato se muestra antes de la conclusion,
   //    para que se vea de donde salio en vez de aparecer de la nada.
   await publishToolCall(
     roomId,
     ANALYST,
     `${source.id}.ultimos_eventos`,
-    `${events.length} ${events.length === 1 ? "hecho" : "hechos"} recientes de ${source.attribution}`,
+    events.length === 1
+      ? `1 hecho reciente de ${source.attribution}`
+      : `${events.length} hechos recientes de ${source.attribution}`,
   ).catch(() => {});
 
   // 3. Y alguien lo comenta.

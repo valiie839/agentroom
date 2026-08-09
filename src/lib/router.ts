@@ -14,7 +14,24 @@ import "server-only";
 import { completeFast, type ChatMessage } from "@/lib/ai";
 import { AGENTS, AGENT_BY_SLUG, type AgentDef } from "@/lib/agents";
 
-const ROSTER = AGENTS.map((a) => `- ${a.slug}: ${a.role}. ${a.name}.`).join("\n");
+/**
+ * Baraja los candidatos antes de listarlos.
+ *
+ * Los modelos pequeños arrastran un sesgo fuerte hacia el primer elemento
+ * de una lista. Con el orden fijo, el tercer agente no hablaba nunca:
+ * abria siempre el mismo y el segundo ganaba todas las interrupciones.
+ * Barajar reparte el turno sin tener que llevar cuentas.
+ */
+function shuffled<T>(items: readonly T[]): T[] {
+  const copy = [...items];
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
+}
+
+const describe = (a: AgentDef) => `- ${a.slug}: ${a.role}. ${a.name}.`;
 
 const NADIE = "nadie";
 
@@ -33,7 +50,7 @@ export async function pickResponder(
       content: `Eres el moderador silencioso de una sala de chat donde conviven
 personas y estos agentes:
 
-${ROSTER}
+${shuffled(AGENTS).map(describe).join("\n")}
 
 Dado el ultimo mensaje, responde UNICAMENTE con el slug del agente mas
 adecuado para intervenir, o con "${NADIE}".
@@ -70,7 +87,7 @@ export async function pickInterjector(
   options: { eager?: boolean } = {},
 ): Promise<AgentDef | undefined> {
   const candidates = AGENTS.filter((a) => a.slug !== alreadySpoke.slug);
-  const roster = candidates.map((a) => `- ${a.slug}: ${a.role}`).join("\n");
+  const roster = shuffled(candidates).map(describe).join("\n");
 
   const sesgo = options.eager
     ? `Elige al que aporte el angulo mas util sobre lo que se acaba de

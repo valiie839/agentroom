@@ -21,6 +21,22 @@ const FLUSH_INTERVAL_MS = 120;
 /** O antes, si ya se acumulo suficiente texto. */
 const FLUSH_CHARS = 48;
 
+/**
+ * Quita el nombre que el agente se pone a si mismo al principio.
+ *
+ * El historial les llega como "Nova (Analista) respondio: ...", y los
+ * modelos imitan ese formato al escribir lo suyo. La interfaz ya muestra
+ * quien habla al lado de la burbuja, asi que el nombre repetido dentro
+ * del texto solo ensucia.
+ */
+function stripSelfName(raw: string, agent: AgentDef): string {
+  const name = agent.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return raw
+    .trim()
+    .replace(new RegExp(`^\\s*${name}\\s*(\\([^)]*\\))?\\s*:\\s*`, "i"), "")
+    .trim();
+}
+
 export interface AgentTurn {
   runId: string;
   /** Vacio si el turno fallo: el error se muestra pero no alimenta al siguiente. */
@@ -101,7 +117,7 @@ export async function runAgent(
   // retira el borrador en los clientes: sin el, un fallo del modelo deja al
   // agente "escribiendo..." para siempre, que en vivo es peor que el error.
   const text =
-    full.trim() ||
+    stripSelfName(full, agent) ||
     (failure
       ? `[no pude responder: ${failure.slice(0, 140)}]`
       : "[me quede sin nada que decir]");
