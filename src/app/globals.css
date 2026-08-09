@@ -1,8 +1,19 @@
 @import "tailwindcss";
 
+/**
+ * La sala es oscura siempre, no segun el sistema de quien mire.
+ *
+ * El globals.css que genera create-next-app dejaba el fondo en blanco
+ * salvo que el sistema pidiera modo oscuro, y esa regla gana sobre las
+ * utilidades de Tailwind por estar fuera de sus capas. Resultado: quien
+ * tuviera el sistema en tema claro veia texto claro sobre fondo blanco,
+ * practicamente ilegible. Toda la paleta del producto asume oscuro, asi
+ * que se fija aqui y se acabo la ambiguedad.
+ */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  color-scheme: dark;
+  --background: #0a0a0a;
+  --foreground: #ededed;
 }
 
 @theme inline {
@@ -12,15 +23,10 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  /* Geist, que es la que carga el layout. La plantilla traia Arial aqui
+     y pisaba la fuente del proyecto sin que se notara. */
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
 }

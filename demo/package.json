@@ -1,0 +1,8 @@
+{
+  "name": "agentroom-demo",
+  "private": true,
+  "type": "module",
+  "description": "Grabacion automatizada del video de demostracion. Vive aparte para no cargar la app con dependencias que solo sirven para producir el video.",
+  "scripts": { "record": "node record.mjs" },
+  "devDependencies": { "playwright": "^1.49.0" }
+}
