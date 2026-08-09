@@ -61,23 +61,35 @@ No expliques nada. Una sola palabra.`,
 export async function pickInterjector(
   transcript: ChatMessage[],
   alreadySpoke: AgentDef,
+  /**
+   * Sesga hacia intervenir. Se usa cuando lo que se comenta es un hecho
+   * recien llegado de la fuente en vivo: ahi una segunda lectura casi
+   * siempre aporta, mientras que en una conversacion entre personas
+   * interrumpir de mas se siente invasivo.
+   */
+  options: { eager?: boolean } = {},
 ): Promise<AgentDef | undefined> {
   const candidates = AGENTS.filter((a) => a.slug !== alreadySpoke.slug);
   const roster = candidates.map((a) => `- ${a.slug}: ${a.role}`).join("\n");
+
+  const sesgo = options.eager
+    ? `Elige al que aporte el angulo mas util sobre lo que se acaba de
+decir. Responde "${NADIE}" solo si de verdad no queda nada que anadir.`
+    : `Responde con el slug de uno SOLO si tiene una objecion sustantiva o
+un angulo que cambia la conversacion. Si la respuesta de
+${alreadySpoke.name} ya cubre el tema, responde "${NADIE}".
+
+Prefiere "${NADIE}": interrumpir sin motivo es ruido.`;
 
   const decision = await completeFast([
     {
       role: "system",
       content: `${alreadySpoke.name} acaba de responder en una sala de chat.
-Quedan estos agentes que podrian interrumpir:
+Quedan estos agentes que podrian intervenir:
 
 ${roster}
 
-Responde con el slug de uno SOLO si tiene una objecion sustantiva o un
-angulo que cambia la conversacion. Si la respuesta de ${alreadySpoke.name}
-ya cubre el tema, responde "${NADIE}".
-
-Prefiere "${NADIE}": interrumpir sin motivo es ruido.
+${sesgo}
 
 Una sola palabra, sin explicaciones.`,
     },

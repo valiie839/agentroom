@@ -18,6 +18,7 @@
 import { resolveSource } from "@/lib/feed";
 import { publishMessage } from "@/lib/portal-server";
 import { AGENTS, AGENT_BY_SLUG } from "@/lib/agents";
+import { pickInterjector } from "@/lib/router";
 import { publishToolCall, runAgent } from "@/lib/run-agent";
 import { MSG, channelIdFor } from "@/lib/room-types";
 
@@ -92,9 +93,9 @@ export async function POST(request: Request) {
   ).catch(() => {});
 
   // 3. Y alguien lo comenta.
-  const { runId } = await runAgent(roomId, ANALYST, [
+  const transcript = [
     {
-      role: "user",
+      role: "user" as const,
       content: `Acaba de entrar este hecho a la sala desde ${source.attribution} (${source.kind}):
 
 ${fresh.detail}
@@ -103,7 +104,36 @@ Comentalo en una o dos frases: que implica y si merece atencion. No
 saludes, no repitas el hecho tal cual, no inventes datos que no esten
 arriba.`,
     },
-  ]);
+  ];
+
+  const { runId, text } = await runAgent(roomId, ANALYST, transcript);
+
+  // 4. Y si otro agente tiene algo que objetar, se mete. Esto convierte
+  //    "un agente opina sobre un dato" en "la sala discute un hecho real",
+  //    que es lo que hace que parezca una conversacion y no una alerta.
+  if (text) {
+    transcript.push({
+      role: "user" as const,
+      content: `${ANALYST.name} (${ANALYST.role}) respondio: ${text}`,
+    });
+
+    const interjector = await pickInterjector(transcript, ANALYST, {
+      eager: true,
+    });
+
+    if (interjector) {
+      // Sin esta instruccion el segundo agente parafraseaba al primero y
+      // asentia. Una segunda voz que repite no aporta nada: lo que hace
+      // interesante la sala es que cada uno mire el hecho desde su rol.
+      transcript.push({
+        role: "user",
+        content: `${interjector.name}, di lo tuyo. No repitas ni resumas lo
+que dijo ${ANALYST.name}: aporta el angulo de tu papel (${interjector.role}).
+Si discrepas, dilo directamente. Una o dos frases.`,
+      });
+      await runAgent(roomId, interjector, transcript);
+    }
+  }
 
   return Response.json({ ok: true, eventId: fresh.id, runId });
 }

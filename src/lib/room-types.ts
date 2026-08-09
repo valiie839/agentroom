@@ -8,6 +8,16 @@
  */
 
 /**
+ * La sala abierta.
+ *
+ * Un id fijo y conocido, para que quien llega no aterrice en una sala
+ * vacia. Portal conserva el historial del canal, asi que la conversacion
+ * anterior sigue ahi y la fuente en vivo empieza a publicar en cuanto
+ * alguien entra: se llega a algo que ya esta pasando, no a un formulario.
+ */
+export const PUBLIC_ROOM = "plaza";
+
+/**
  * Id del canal de Portal para una sala.
  *
  * El prefijo no es decorativo: permite que `portal.config.ts` gobierne

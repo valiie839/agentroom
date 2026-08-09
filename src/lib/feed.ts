@@ -191,8 +191,11 @@ const hackernews: FeedSource = {
         return [
           {
             id: `hn-${h.objectID}`,
-            detail: `Nueva historia en Hacker News: "${h.title}"${
-              h.author ? `, publicada por ${h.author}` : ""
+            // "Compartida por" y no "publicada por": quien la envia a HN
+            // rara vez es su autor, y los agentes lo confundian, atribuyendo
+            // el proyecto entero a quien solo pego un enlace.
+            detail: `Alguien acaba de compartir en Hacker News la historia "${h.title}"${
+              h.author ? ` (enviada por el usuario ${h.author})` : ""
             }.`,
             url: h.url || `https://news.ycombinator.com/item?id=${h.objectID}`,
             time: h.created_at_i * 1000,
