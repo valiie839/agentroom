@@ -50,5 +50,8 @@ demo/
 AGENTS.md
 CLAUDE.md
 
+# configuracion de herramientas de desarrollo, no del proyecto
+.claude/
+
 # el video de la entrega vive en YouTube, no en el repositorio
 *.mp4
