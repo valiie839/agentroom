@@ -41,6 +41,14 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# herramientas de grabacion del video (no son parte del producto)
-demo/node_modules
-demo/salida
+# herramientas con las que se grabo el video de la entrega: utiles para
+# reproducirlo, pero no forman parte del producto
+demo/
+
+# los regenera `next dev` en cada arranque; son instrucciones para
+# asistentes de IA, no codigo del proyecto
+AGENTS.md
+CLAUDE.md
+
+# el video de la entrega vive en YouTube, no en el repositorio
+*.mp4

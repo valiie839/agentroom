@@ -4,6 +4,8 @@
 
 Proyecto para [The Realtime Hackathon by Portal](https://hack.useportal.co/terms) (7–9 de agosto de 2026).
 
+**[▶ Ver la demo en video](https://youtu.be/5t1rnFfLTnw)** (82 s) · **[Abrir la sala](https://agentroom.vercel.app)** · [Cómo se grabó](DEMO_INSTRUCTIONS.md)
+
 ---
 
 ## El problema
